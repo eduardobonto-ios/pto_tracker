@@ -160,7 +160,7 @@ export function PTORequestsPage() {
         className={
           isManagement
             ? 'flex h-full min-h-0 flex-col gap-6'
-            : 'grid h-full min-h-0 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]'
+            : 'flex h-full min-h-0 flex-col gap-6 overflow-y-auto xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[minmax(0,1fr)] xl:overflow-visible'
         }
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5">
