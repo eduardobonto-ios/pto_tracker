@@ -22,32 +22,11 @@ import type { PTORequest } from '@/types';
  * Full detail view for one PTO request, shared by the drawer on the log page
  * and the standalone `/requests/:id` route that email links will target.
  */
-export function RequestDetails({
-  request,
-  onDone,
-}: {
-  request: PTORequest;
-  onDone?: () => void;
-}) {
-  const { employees, balances, isAdmin, approveRequest, rejectRequest } = useApp();
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [rejectError, setRejectError] = useState('');
+export function RequestDetails({ request }: { request: PTORequest }) {
+  const { employees, balances } = useApp();
 
   const employee = employees.find((e) => e.id === request.employeeId);
   const balance = employee ? balances[employee.id] : undefined;
-
-  function handleReject() {
-    if (!rejectionReason.trim()) {
-      setRejectError('A reason is required so the employee knows what to do next.');
-      return;
-    }
-    rejectRequest(request.id, rejectionReason.trim());
-    setRejectOpen(false);
-    setRejectionReason('');
-    setRejectError('');
-    onDone?.();
-  }
 
   return (
     <div className="space-y-5">
@@ -188,31 +167,6 @@ export function RequestDetails({
         </ol>
       </div>
 
-      {/* Admin actions */}
-      {isAdmin && request.status === 'Pending' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slateish-200/80 bg-white p-5 shadow-card">
-          <p className="text-[13px] text-slateish-500">
-            Approving deducts{' '}
-            <strong className="text-navy-800">{formatDays(request.days)} day(s)</strong> from
-            this employee&rsquo;s balance.
-          </p>
-          <div className="flex gap-2">
-            <Button variant="danger" onClick={() => setRejectOpen(true)}>
-              <X size={15} /> Reject request
-            </Button>
-            <Button
-              variant="success"
-              onClick={() => {
-                approveRequest(request.id);
-                onDone?.();
-              }}
-            >
-              <Check size={15} /> Approve request
-            </Button>
-          </div>
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center gap-4 px-1 text-[12px] text-slateish-400">
         <span className="inline-flex items-center gap-1.5">
           <CalendarRange size={13} /> {formatDateRange(request.startDate, request.endDate)}
@@ -224,6 +178,60 @@ export function RequestDetails({
           <FileText size={13} /> Permanent link: /requests/{request.id}
         </Link>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Approve/reject action bar for a pending request. Kept separate from
+ * `RequestDetails` so callers can pin it in a modal/drawer's sticky footer
+ * instead of the scrollable body — otherwise it can end up below the fold.
+ */
+export function RequestActions({
+  request,
+  onDone,
+}: {
+  request: PTORequest;
+  onDone?: () => void;
+}) {
+  const { isAdmin, approveRequest, rejectRequest } = useApp();
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectError, setRejectError] = useState('');
+
+  if (!isAdmin || request.status !== 'Pending') return null;
+
+  function handleReject() {
+    if (!rejectionReason.trim()) {
+      setRejectError('A reason is required so the employee knows what to do next.');
+      return;
+    }
+    rejectRequest(request.id, rejectionReason.trim());
+    setRejectOpen(false);
+    setRejectionReason('');
+    setRejectError('');
+    onDone?.();
+  }
+
+  return (
+    <>
+      <p className="mr-auto text-[13px] text-slateish-500">
+        Approving deducts{' '}
+        <strong className="text-navy-800">{formatDays(request.days)} day(s)</strong> from this
+        employee&rsquo;s balance.
+      </p>
+      <Button variant="danger" onClick={() => setRejectOpen(true)}>
+        <X size={15} /> Reject request
+      </Button>
+      <Button
+        variant="success"
+        onClick={() => {
+          approveRequest(request.id);
+          onDone?.();
+        }}
+      >
+        <Check size={15} /> Approve request
+      </Button>
 
       <Modal
         open={rejectOpen}
@@ -253,7 +261,7 @@ export function RequestDetails({
           />
         </Field>
       </Modal>
-    </div>
+    </>
   );
 }
 

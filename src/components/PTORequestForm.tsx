@@ -31,11 +31,16 @@ interface FormState {
   status: PTOStatus;
 }
 
-export function PTORequestForm({
+/**
+ * All state and logic behind the leave request form, shared by the
+ * full-page `PTORequestForm` and the `FileLeaveModal` popup so both
+ * surfaces stay in sync without duplicating validation/submit logic.
+ */
+export function useLeaveRequestForm({
   onSubmitted,
 }: {
   onSubmitted?: (requestId: string) => void;
-}) {
+} = {}) {
   const { currentUser, employees, isAdmin, submitRequest } = useApp();
 
   const blank = useMemo<FormState>(
@@ -95,6 +100,11 @@ export function PTORequestForm({
     return Object.keys(e).length === 0;
   }
 
+  function reset() {
+    setForm(blank);
+    setErrors({});
+  }
+
   function openReview() {
     if (validate()) setReviewOpen(true);
   }
@@ -118,190 +128,193 @@ export function PTORequestForm({
     const created = submitRequest(input);
     setReviewOpen(false);
     setConfirmedId(created.id);
-    setForm(blank);
-    setErrors({});
+    reset();
     onSubmitted?.(created.id);
   }
 
+  return {
+    isAdmin,
+    employees,
+    form,
+    set,
+    errors,
+    totalHours,
+    days,
+    selectedEmployee,
+    payStatus,
+    reset,
+    openReview,
+    confirmSubmit,
+    reviewOpen,
+    setReviewOpen,
+    confirmedId,
+    setConfirmedId,
+  };
+}
+
+type LeaveRequestFormState = ReturnType<typeof useLeaveRequestForm>;
+
+/** The field inputs only — no wrapping card and no submit buttons, so callers can place those wherever fits (inline, or a modal's sticky footer). */
+export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
+  const { form, set, errors, isAdmin, employees, totalHours, days, payStatus } = f;
+
+  return (
+    <div className="space-y-5">
+      <Field
+        label="Team member"
+        required
+        error={errors.employeeId}
+        help={isAdmin ? 'As an admin you may file on behalf of another team member.' : 'Locked to your own account.'}
+      >
+        <Select
+          value={form.employeeId}
+          disabled={!isAdmin}
+          onChange={(e) => set('employeeId', e.target.value)}
+        >
+          {employees.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name} — {e.department}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field label="Type of leave" required error={errors.leaveType}>
+        <Select value={form.leaveType} onChange={(e) => set('leaveType', e.target.value as LeaveType)}>
+          <option value="">Select a leave type…</option>
+          {LEAVE_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field label="Reason">
+        <Textarea
+          value={form.reason}
+          onChange={(e) => set('reason', e.target.value)}
+          placeholder="Brief reason or context for this leave..."
+          rows={4}
+        />
+      </Field>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <Field label="Date from" required error={errors.startDate}>
+          <Input
+            type="date"
+            value={form.startDate}
+            min="2026-01-01"
+            onChange={(e) => set('startDate', e.target.value)}
+          />
+        </Field>
+        <Field label="Date to" help="Leave blank if same as start date" error={errors.endDate}>
+          <Input
+            type="date"
+            value={form.endDate}
+            min={form.startDate || undefined}
+            onChange={(e) => set('endDate', e.target.value)}
+          />
+        </Field>
+      </div>
+
+      <Field label="Duration" required>
+        <PillGroup options={DURATION_TYPES} value={form.duration} onChange={(v) => set('duration', v)} />
+      </Field>
+
+      {form.duration === 'Custom Hours' && (
+        <div className="grid gap-5 rounded-xl border border-brand-100 bg-brand-50/50 p-4 sm:grid-cols-3">
+          <Field label="Start time" error={errors.startTime}>
+            <Input
+              type="time"
+              value={form.startTime}
+              onChange={(e) => set('startTime', e.target.value)}
+              className="bg-white"
+            />
+          </Field>
+          <Field label="End time">
+            <Input
+              type="time"
+              value={form.endTime}
+              onChange={(e) => set('endTime', e.target.value)}
+              className="bg-white"
+            />
+          </Field>
+          <Field label="Total hours" help="Auto-calculated">
+            <Input value={totalHours ? `${totalHours} h` : '—'} readOnly />
+          </Field>
+        </div>
+      )}
+
+      <Field label="Coverage / POC" required error={errors.coverage}>
+        <Input
+          value={form.coverage}
+          onChange={(e) => set('coverage', e.target.value)}
+          placeholder="Who covers during your absence?"
+        />
+      </Field>
+
+      {isAdmin && (
+        <Field
+          label="Status (admin preview only)"
+          help="Regular employees always file as Pending. This selector exists so the prototype can demonstrate each state."
+          className="sm:max-w-xs"
+        >
+          <Select value={form.status} onChange={(e) => set('status', e.target.value as PTOStatus)}>
+            {PTO_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
+      <div className="flex items-start gap-2.5 rounded-xl border border-slateish-200 bg-slateish-50 p-3.5">
+        <Info size={16} className="mt-0.5 shrink-0 text-accent-500" />
+        <p className="text-[12.5px] leading-relaxed text-slateish-600">
+          This request will be charged as{' '}
+          <strong className="text-navy-800">{formatDays(days)} day(s)</strong> and filed as{' '}
+          <strong className="text-navy-800">{payStatus}</strong>. Pending days are shown
+          separately on your balance and are only deducted once approved.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Clear / Submit buttons — kept separate so a modal can pin them in its sticky footer. */
+export function LeaveRequestSubmitActions({ f }: { f: LeaveRequestFormState }) {
   return (
     <>
-      <Card>
-        <CardHeader
-          title="Leave request"
-          description="All fields marked with an asterisk are required. Your request is routed to Management for review."
-          icon={<ClipboardCheck size={17} />}
-        />
-        <CardBody className="space-y-5">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field
-              label="Team member"
-              required
-              error={errors.employeeId}
-              help={
-                isAdmin
-                  ? 'As an admin you may file on behalf of another team member.'
-                  : 'Locked to your own account.'
-              }
-            >
-              <Select
-                value={form.employeeId}
-                disabled={!isAdmin}
-                onChange={(e) => set('employeeId', e.target.value)}
-              >
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name} — {e.department}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+      <Button variant="secondary" onClick={f.reset}>
+        Clear
+      </Button>
+      <Button onClick={f.openReview}>
+        <Send size={15} /> Submit Request
+      </Button>
+    </>
+  );
+}
 
-            <Field label="Type of leave" required error={errors.leaveType}>
-              <Select
-                value={form.leaveType}
-                onChange={(e) => set('leaveType', e.target.value as LeaveType)}
-              >
-                <option value="">Select a leave type…</option>
-                {LEAVE_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+/** The review-before-submit and post-submit confirmation overlays. Independent of where the fields/buttons are rendered. */
+export function LeaveRequestConfirmations({ f }: { f: LeaveRequestFormState }) {
+  const { form, selectedEmployee, totalHours, days, payStatus, isAdmin } = f;
 
-          <Field label="Reason">
-            <Textarea
-              value={form.reason}
-              onChange={(e) => set('reason', e.target.value)}
-              placeholder="Brief reason or context for this leave..."
-              rows={4}
-            />
-          </Field>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Date from" required error={errors.startDate}>
-              <Input
-                type="date"
-                value={form.startDate}
-                min="2026-01-01"
-                onChange={(e) => set('startDate', e.target.value)}
-              />
-            </Field>
-            <Field
-              label="Date to"
-              help="Leave blank if same as start date"
-              error={errors.endDate}
-            >
-              <Input
-                type="date"
-                value={form.endDate}
-                min={form.startDate || undefined}
-                onChange={(e) => set('endDate', e.target.value)}
-              />
-            </Field>
-          </div>
-
-          <Field label="Duration" required>
-            <PillGroup
-              options={DURATION_TYPES}
-              value={form.duration}
-              onChange={(v) => set('duration', v)}
-            />
-          </Field>
-
-          {form.duration === 'Custom Hours' && (
-            <div className="grid gap-5 rounded-xl border border-brand-100 bg-brand-50/50 p-4 sm:grid-cols-3">
-              <Field label="Start time" error={errors.startTime}>
-                <Input
-                  type="time"
-                  value={form.startTime}
-                  onChange={(e) => set('startTime', e.target.value)}
-                  className="bg-white"
-                />
-              </Field>
-              <Field label="End time">
-                <Input
-                  type="time"
-                  value={form.endTime}
-                  onChange={(e) => set('endTime', e.target.value)}
-                  className="bg-white"
-                />
-              </Field>
-              <Field label="Total hours" help="Auto-calculated">
-                <Input value={totalHours ? `${totalHours} h` : '—'} readOnly />
-              </Field>
-            </div>
-          )}
-
-          <Field label="Coverage / POC" required error={errors.coverage}>
-            <Input
-              value={form.coverage}
-              onChange={(e) => set('coverage', e.target.value)}
-              placeholder="Who covers during your absence?"
-            />
-          </Field>
-
-          {isAdmin && (
-            <Field
-              label="Status (admin preview only)"
-              help="Regular employees always file as Pending. This selector exists so the prototype can demonstrate each state."
-              className="sm:max-w-xs"
-            >
-              <Select
-                value={form.status}
-                onChange={(e) => set('status', e.target.value as PTOStatus)}
-              >
-                {PTO_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-
-          <div className="flex items-start gap-2.5 rounded-xl border border-slateish-200 bg-slateish-50 p-3.5">
-            <Info size={16} className="mt-0.5 shrink-0 text-accent-500" />
-            <p className="text-[12.5px] leading-relaxed text-slateish-600">
-              This request will be charged as{' '}
-              <strong className="text-navy-800">{formatDays(days)} day(s)</strong> and filed as{' '}
-              <strong className="text-navy-800">{payStatus}</strong>. Pending days are shown
-              separately on your balance and are only deducted once approved.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-slateish-200/70 pt-5">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setForm(blank);
-                setErrors({});
-              }}
-            >
-              Clear
-            </Button>
-            <Button onClick={openReview}>
-              <Send size={15} /> Submit Request
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-
-      {/* Review step before the request is filed. */}
+  return (
+    <>
       <Modal
-        open={reviewOpen}
-        onClose={() => setReviewOpen(false)}
+        open={f.reviewOpen}
+        onClose={() => f.setReviewOpen(false)}
         title="Review your request"
         description="Check the details below before submitting. You can still go back and edit."
         icon={<ClipboardCheck size={18} />}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setReviewOpen(false)}>
+            <Button variant="secondary" onClick={() => f.setReviewOpen(false)}>
               Back to edit
             </Button>
-            <Button onClick={confirmSubmit}>
+            <Button onClick={f.confirmSubmit}>
               <Send size={15} /> Confirm &amp; submit
             </Button>
           </>
@@ -331,17 +344,14 @@ export function PTORequestForm({
         </dl>
       </Modal>
 
-      {/* Post-submit confirmation. */}
       <Modal
-        open={!!confirmedId}
-        onClose={() => setConfirmedId(null)}
+        open={!!f.confirmedId}
+        onClose={() => f.setConfirmedId(null)}
         title="Request submitted"
-        description={`Reference ${confirmedId ?? ''} · filed ${todayISO()}`}
+        description={`Reference ${f.confirmedId ?? ''} · filed ${todayISO()}`}
         icon={<CheckCircle2 size={18} className="text-success-600" />}
         size="sm"
-        footer={
-          <Button onClick={() => setConfirmedId(null)}>Done</Button>
-        }
+        footer={<Button onClick={() => f.setConfirmedId(null)}>Done</Button>}
       >
         <p className="text-[13.5px] leading-relaxed text-slateish-600">
           Your request is now in the queue for Management review. In the backend phase an
@@ -351,6 +361,35 @@ export function PTORequestForm({
           direct link to this request.
         </p>
       </Modal>
+    </>
+  );
+}
+
+/** Full-page form: fields, inline submit buttons and confirmations in one self-contained card. */
+export function PTORequestForm({
+  onSubmitted,
+}: {
+  onSubmitted?: (requestId: string) => void;
+}) {
+  const f = useLeaveRequestForm({ onSubmitted });
+
+  return (
+    <>
+      <Card>
+        <CardHeader
+          title="Leave request"
+          description="All fields marked with an asterisk are required. Your request is routed to Management for review."
+          icon={<ClipboardCheck size={17} />}
+        />
+        <CardBody className="space-y-5">
+          <LeaveRequestFields f={f} />
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slateish-200/70 pt-5">
+            <LeaveRequestSubmitActions f={f} />
+          </div>
+        </CardBody>
+      </Card>
+
+      <LeaveRequestConfirmations f={f} />
     </>
   );
 }

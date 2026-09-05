@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, LogOut, Menu, Repeat2, Search } from 'lucide-react';
+import { ChevronDown, LogOut, Mail, Menu, Repeat2 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { Avatar } from '@/components/ui/Misc';
 import { Select } from '@/components/ui/Field';
@@ -17,7 +17,7 @@ export function Header({
   onOpenNav: () => void;
   actions?: React.ReactNode;
 }) {
-  const { currentUser, employees, switchUser, signOut } = useApp();
+  const { currentUser, employees, switchUser, signOut, summary, isManagement } = useApp();
   const navigate = useNavigate();
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
@@ -41,23 +41,25 @@ export function Header({
           )}
         </div>
 
-        {/* Quick lookup, mirroring the Technical Playbook header search. */}
-        <div className="relative hidden xl:block">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slateish-400"
-          />
-          <input
-            type="search"
-            placeholder="Search employees or requests…"
-            onFocus={() => navigate('/requests')}
-            className="h-10 w-[300px] rounded-xl border border-slateish-200 bg-white pl-9 pr-3 text-sm text-navy-900 placeholder:text-slateish-400 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100"
-          />
-        </div>
-
         {actions}
 
         <div className="mx-1 hidden h-8 w-px bg-slateish-200 sm:block" />
+
+        {/* Notifications — links to the email notification preview. Management only: it's a queue of pending approvals. */}
+        {isManagement && (
+          <button
+            onClick={() => navigate('/email-preview')}
+            aria-label="Notifications"
+            className="relative rounded-lg p-2 text-slateish-500 transition-colors hover:bg-slateish-100 hover:text-navy-800"
+          >
+            <Mail size={19} />
+            {summary.pendingRequests ? (
+              <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+                {summary.pendingRequests}
+              </span>
+            ) : null}
+          </button>
+        )}
 
         {/* Preview-only identity switcher. Replaced by real auth in phase 2. */}
         <div className="relative">

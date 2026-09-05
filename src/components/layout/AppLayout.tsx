@@ -9,16 +9,19 @@ export function AppLayout({
   subtitle,
   actions,
   children,
+  fillHeight,
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
+  /** Locks the page to the viewport height (no document scroll) so content that manages its own layout — e.g. the calendar month grid — can fill the remaining space exactly instead of overflowing. */
+  fillHeight?: boolean;
 }) {
   const [navOpen, setNavOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-canvas">
+    <div className={fillHeight ? 'flex h-screen overflow-hidden bg-canvas' : 'flex min-h-screen bg-canvas'}>
       {/* Desktop rail */}
       <Sidebar className="fixed inset-y-0 left-0 hidden lg:flex" />
 
@@ -51,21 +54,35 @@ export function AppLayout({
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-[268px]">
+      <div
+        className={
+          fillHeight
+            ? 'flex min-h-0 min-w-0 flex-1 flex-col lg:pl-[268px]'
+            : 'flex min-w-0 flex-1 flex-col lg:pl-[268px]'
+        }
+      >
         <Header
           title={title}
           subtitle={subtitle}
           actions={actions}
           onOpenNav={() => setNavOpen(true)}
         />
-        <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main
+          className={
+            fillHeight
+              ? 'mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8 lg:py-8'
+              : 'mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8'
+          }
+        >
           {children}
         </main>
-        <footer className="border-t border-slateish-200/70 px-4 py-5 sm:px-6 lg:px-8">
-          <p className="text-[12px] text-slateish-400">
-            Valveman PTO Tracker · Internal use only · Front-end prototype with mock data
-          </p>
-        </footer>
+        {!fillHeight && (
+          <footer className="border-t border-slateish-200/70 px-4 py-5 sm:px-6 lg:px-8">
+            <p className="text-[12px] text-slateish-400">
+              Valveman PTO Tracker · Internal use only · Front-end prototype with mock data
+            </p>
+          </footer>
+        )}
       </div>
     </div>
   );

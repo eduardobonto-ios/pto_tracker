@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FileQuestion } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { RequestDetails } from '@/components/RequestDetails';
+import { RequestActions, RequestDetails } from '@/components/RequestDetails';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody } from '@/components/ui/Card';
 import { useApp } from '@/context/AppContext';
@@ -14,7 +14,7 @@ import { useApp } from '@/context/AppContext';
  */
 export function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { requests } = useApp();
+  const { requests, isAdmin } = useApp();
   const navigate = useNavigate();
 
   const request = requests.find((r) => r.id === id);
@@ -35,8 +35,13 @@ export function RequestDetailPage() {
       }
     >
       {request ? (
-        <div className="max-w-3xl">
+        <div className="max-w-3xl space-y-5">
           <RequestDetails request={request} />
+          {isAdmin && request.status === 'Pending' && (
+            <div className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-slateish-200/80 bg-white p-5 shadow-card">
+              <RequestActions request={request} />
+            </div>
+          )}
         </div>
       ) : (
         <Card className="mx-auto max-w-lg">

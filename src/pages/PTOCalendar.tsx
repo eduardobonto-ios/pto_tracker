@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Calendar } from '@/components/Calendar';
-import { RequestDetails } from '@/components/RequestDetails';
+import { RequestActions, RequestDetails } from '@/components/RequestDetails';
 import { Drawer } from '@/components/ui/Modal';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Field, Select } from '@/components/ui/Field';
@@ -9,7 +9,7 @@ import { useApp } from '@/context/AppContext';
 import { DEPARTMENTS, LEAVE_TYPES, type PTORequest } from '@/types';
 
 export function PTOCalendarPage() {
-  const { requests, employees } = useApp();
+  const { requests, employees, isAdmin } = useApp();
 
   const [department, setDepartment] = useState('all');
   const [employeeId, setEmployeeId] = useState('all');
@@ -18,6 +18,10 @@ export function PTOCalendarPage() {
   const [selected, setSelected] = useState<PTORequest | null>(null);
 
   const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+
+  const activeRequest = selected
+    ? requests.find((r) => r.id === selected.id) ?? selected
+    : null;
 
   const filtered = useMemo(
     () =>
@@ -35,9 +39,10 @@ export function PTOCalendarPage() {
     <AppLayout
       title="PTO Calendar"
       subtitle="Approved leave across the team, month by month"
+      fillHeight
     >
-      <div className="space-y-5">
-        <Card>
+      <div className="flex h-full min-h-0 flex-col gap-5">
+        <Card className="shrink-0">
           <CardBody>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Department">
@@ -87,12 +92,14 @@ export function PTOCalendarPage() {
           </CardBody>
         </Card>
 
-        <Calendar
-          requests={filtered}
-          employees={employees}
-          showPending={showPending}
-          onSelect={setSelected}
-        />
+        <div className="min-h-0 flex-1">
+          <Calendar
+            requests={filtered}
+            employees={employees}
+            showPending={showPending}
+            onSelect={setSelected}
+          />
+        </div>
       </div>
 
       <Drawer
@@ -100,13 +107,13 @@ export function PTOCalendarPage() {
         onClose={() => setSelected(null)}
         title="PTO Request Details"
         description={selected?.id}
+        footer={
+          activeRequest && isAdmin && activeRequest.status === 'Pending' ? (
+            <RequestActions request={activeRequest} onDone={() => setSelected(null)} />
+          ) : undefined
+        }
       >
-        {selected && (
-          <RequestDetails
-            request={requests.find((r) => r.id === selected.id) ?? selected}
-            onDone={() => setSelected(null)}
-          />
-        )}
+        {activeRequest && <RequestDetails request={activeRequest} />}
       </Drawer>
     </AppLayout>
   );

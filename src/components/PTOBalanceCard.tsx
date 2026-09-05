@@ -81,7 +81,9 @@ export function PTOBalanceCard({
       </div>
 
       {!compact && (
-        <div className="grid gap-px bg-slateish-200/70 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-px bg-slateish-200/70">
+          <Stat label="Department" value={employee.department} />
+          <Stat label="Email" value={employee.email} />
           <Stat label="Hire date" value={formatDateLong(employee.hireDate)} />
           <Stat
             label="Eligibility date"
@@ -91,6 +93,7 @@ export function PTOBalanceCard({
           <Stat
             label="Annual allowance"
             value={`${formatDays(employee.annualPtoAllowance)} days`}
+            className="col-span-2"
           />
         </div>
       )}
@@ -102,18 +105,20 @@ function Stat({
   label,
   value,
   icon,
+  className,
 }: {
   label: string;
   value: string;
   icon?: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="bg-white px-5 py-4">
+    <div className={`bg-white px-5 py-4 ${className ?? ''}`}>
       <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-slateish-400">
         {icon}
         {label}
       </p>
-      <p className="mt-1 text-[13.5px] font-semibold text-navy-900">{value}</p>
+      <p className="mt-1 truncate text-[13.5px] font-semibold text-navy-900">{value}</p>
     </div>
   );
 }

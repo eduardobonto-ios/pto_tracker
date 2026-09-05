@@ -76,8 +76,8 @@ export function Calendar({
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slateish-200/80 bg-white shadow-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slateish-200/70 px-4 py-3.5 sm:px-5">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slateish-200/80 bg-white shadow-card">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slateish-200/70 px-4 py-3.5 sm:px-5">
         <div className="flex items-center gap-2">
           <button
             onClick={() => shift(-1)}
@@ -104,7 +104,7 @@ export function Calendar({
         </Button>
       </div>
 
-      <div className="grid grid-cols-7 border-b border-slateish-200/70 bg-tablehead">
+      <div className="grid shrink-0 grid-cols-7 border-b border-slateish-200/70 bg-tablehead">
         {WEEKDAYS.map((d) => (
           <div
             key={d}
@@ -116,7 +116,7 @@ export function Calendar({
         ))}
       </div>
 
-      <div className="grid grid-cols-7">
+      <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6">
         {cells.map((cell) => {
           const items = byDate.get(cell.iso) ?? [];
           const weekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
@@ -124,7 +124,7 @@ export function Calendar({
             <div
               key={cell.iso}
               className={cn(
-                'min-h-[104px] border-b border-r border-slateish-200/60 p-1.5 last:border-r-0',
+                'min-h-0 overflow-hidden border-b border-r border-slateish-200/60 p-1.5 last:border-r-0',
                 !cell.inMonth && 'bg-slateish-50/60',
                 weekend && cell.inMonth && 'bg-slateish-50/40',
               )}
@@ -192,7 +192,7 @@ export function Calendar({
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slateish-200/70 px-4 py-3 text-[11.5px] text-slateish-500 sm:px-5">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-slateish-200/70 px-4 py-3 text-[11.5px] text-slateish-500 sm:px-5">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-brand-500" /> Approved
         </span>

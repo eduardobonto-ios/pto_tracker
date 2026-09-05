@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { KeyRound, Lock, Search, Trash2, UserMinus, UserPlus2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { AccountCreationForm } from '@/components/AccountCreationForm';
+import { AccountCreationModal } from '@/components/AccountCreationModal';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
-import { EmptyState, Table, TableShell, Td, Th, Tr } from '@/components/ui/Table';
+import { EmptyState, Table, Td, Th, Tr } from '@/components/ui/Table';
 import { Avatar } from '@/components/ui/Misc';
 import { AccountStatusBadge, RoleBadge } from '@/components/StatusBadge';
 import { useApp } from '@/context/AppContext';
@@ -22,6 +22,7 @@ export function AccountManagementPage() {
   const [resetTarget, setResetTarget] = useState<UserAccount | null>(null);
   const [newTempPassword, setNewTempPassword] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<UserAccount | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -48,9 +49,15 @@ export function AccountManagementPage() {
     <AppLayout
       title="Account Management"
       subtitle="Invite-only access — only an administrator can create an account"
+      actions={
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <UserPlus2 size={15} /> Create an account
+        </Button>
+      }
+      fillHeight
     >
-      <div className="space-y-6">
-        <div className="rounded-2xl border border-brand-100 bg-brand-50/60 px-5 py-4">
+      <div className="flex h-full min-h-0 flex-col gap-6">
+        <div className="shrink-0 rounded-2xl border border-brand-100 bg-brand-50/60 px-5 py-4">
           <p className="flex items-center gap-2 text-[12.5px] font-semibold text-brand-800">
             <Lock size={14} className="text-accent-600" /> Invite-only access (SEC-01)
           </p>
@@ -60,9 +67,7 @@ export function AccountManagementPage() {
           </p>
         </div>
 
-        <AccountCreationForm />
-
-        <Card>
+        <Card className="shrink-0">
           <CardBody>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Search">
@@ -97,21 +102,22 @@ export function AccountManagementPage() {
           </CardBody>
         </Card>
 
-        <TableShell>
-          <Table className="min-w-[1320px]">
-            <thead>
-              <tr>
-                <Th>Email</Th>
-                <Th>Full Name</Th>
-                <Th>Application Role</Th>
-                <Th>Job Title</Th>
-                <Th>Department</Th>
-                <Th>Status</Th>
-                <Th>Created</Th>
-                <Th align="right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-slateish-200/80 bg-white shadow-card">
+          <div className="scroll-slim h-full overflow-auto">
+            <Table className="min-w-[1020px]">
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <Th>Email</Th>
+                  <Th>Full Name</Th>
+                  <Th>Application Role</Th>
+                  <Th>Job Title</Th>
+                  <Th>Department</Th>
+                  <Th>Status</Th>
+                  <Th>Created</Th>
+                  <Th align="right">Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
               {filtered.length === 0 && (
                 <EmptyState
                   colSpan={8}
@@ -138,45 +144,68 @@ export function AccountManagementPage() {
                   <Td>
                     <RoleBadge role={a.appRole} />
                   </Td>
-                  <Td className="whitespace-nowrap">{a.jobTitle}</Td>
-                  <Td className="whitespace-nowrap">{a.department}</Td>
+                  <Td className="max-w-[150px]">{a.jobTitle}</Td>
+                  <Td className="max-w-[130px]">{a.department}</Td>
                   <Td>
                     <AccountStatusBadge status={a.status} />
                   </Td>
                   <Td className="whitespace-nowrap tabular-nums">{formatDate(a.createdAt)}</Td>
                   <Td align="right">
                     <div className="flex justify-end gap-1.5">
-                      <Button size="sm" variant="secondary" onClick={() => openReset(a)}>
-                        <KeyRound size={13} className="text-accent-500" /> Reset password
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => openReset(a)}
+                        aria-label="Reset password"
+                        title="Reset password"
+                        className="w-8 px-0"
+                      >
+                        <KeyRound size={14} className="text-accent-500" />
                       </Button>
                       {a.status === 'Active' ? (
                         <Button
                           size="sm"
                           variant="secondary"
                           onClick={() => revokeAccess(a.id)}
+                          aria-label="Revoke access"
+                          title="Revoke access"
+                          className="w-8 px-0"
                         >
-                          <UserMinus size={13} className="text-accent-500" /> Revoke
+                          <UserMinus size={14} className="text-accent-500" />
                         </Button>
                       ) : (
                         <Button
                           size="sm"
                           variant="secondary"
                           onClick={() => restoreAccess(a.id)}
+                          aria-label="Restore access"
+                          title="Restore access"
+                          className="w-8 px-0"
                         >
-                          <UserPlus2 size={13} className="text-success-600" /> Restore
+                          <UserPlus2 size={14} className="text-success-600" />
                         </Button>
                       )}
-                      <Button size="sm" variant="danger" onClick={() => setDeleteTarget(a)}>
-                        <Trash2 size={13} /> Delete
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => setDeleteTarget(a)}
+                        aria-label="Delete account"
+                        title="Delete account"
+                        className="w-8 px-0"
+                      >
+                        <Trash2 size={14} />
                       </Button>
                     </div>
                   </Td>
                 </Tr>
               ))}
-            </tbody>
-          </Table>
-        </TableShell>
+              </tbody>
+            </Table>
+          </div>
+        </div>
       </div>
+
+      <AccountCreationModal open={createOpen} onClose={() => setCreateOpen(false)} />
 
       {/* Reset password */}
       <Modal

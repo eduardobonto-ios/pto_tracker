@@ -3,17 +3,11 @@ import { Mail, TriangleAlert } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { EmailPreview } from '@/components/EmailPreview';
 import { Card, CardBody } from '@/components/ui/Card';
-import { Field, Select } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Field';
 import { useApp } from '@/context/AppContext';
 import { PTO_NOTIFICATION_RECIPIENTS } from '@/lib/theme';
 import { formatDate } from '@/lib/utils';
 
-/**
- * Email Notification Preview.
- *
- * Nothing is sent from this screen — it exists so the wording and layout of the
- * notification can be agreed before SMTP is configured in the backend phase.
- */
 export function EmailPreviewPage() {
   const { requests, employees, lastSubmittedId } = useApp();
   const [requestId, setRequestId] = useState(
@@ -27,39 +21,29 @@ export function EmailPreviewPage() {
     <AppLayout
       title="Email Notification Preview"
       subtitle="How the review notification will look once email is wired up"
+      actions={
+        <Select
+          value={requestId}
+          onChange={(e) => setRequestId(e.target.value)}
+          className="h-10 w-[280px]"
+        >
+          {requests.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.id} — {empById.get(r.employeeId)?.name} · {formatDate(r.startDate)} ·{' '}
+              {r.status}
+            </option>
+          ))}
+        </Select>
+      }
     >
-      <div className="mx-auto max-w-3xl space-y-5">
-        <div className="flex items-start gap-2.5 rounded-2xl border border-warning-200 bg-warning-50 px-4 py-3.5">
-          <TriangleAlert size={17} className="mt-0.5 shrink-0 text-warning-600" />
-          <div>
-            <p className="text-[13px] font-semibold text-warning-700">
-              Preview only — no email is sent
-            </p>
-            <p className="mt-0.5 text-[12.5px] leading-relaxed text-warning-700/90">
-              In the backend phase this notification will go to{' '}
-              {PTO_NOTIFICATION_RECIPIENTS.join(' and ')} each time a request is filed, with
-              the button linking to <span className="font-mono">/requests/{'{request-id}'}</span>.
-            </p>
-          </div>
+      <div className="mx-auto max-w-3xl space-y-3">
+        <div className="flex items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-2.5">
+          <TriangleAlert size={15} className="shrink-0 text-warning-600" />
+          <p className="text-[12.5px] leading-snug text-warning-700">
+            Preview only — no email is sent. In the backend phase this goes to{' '}
+            {PTO_NOTIFICATION_RECIPIENTS.join(' and ')}.
+          </p>
         </div>
-
-        <Card>
-          <CardBody>
-            <Field
-              label="Preview with request"
-              help="Pick any request to see the notification it would generate."
-            >
-              <Select value={requestId} onChange={(e) => setRequestId(e.target.value)}>
-                {requests.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.id} — {empById.get(r.employeeId)?.name} · {formatDate(r.startDate)} ·{' '}
-                    {r.status}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </CardBody>
-        </Card>
 
         {request ? (
           <EmailPreview request={request} />

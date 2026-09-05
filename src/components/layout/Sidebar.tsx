@@ -1,15 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import {
-  CalendarDays,
-  ClipboardList,
-  FilePlus2,
-  LayoutDashboard,
-  LifeBuoy,
-  Mail,
-  UserCog,
-  UserRound,
-  Users,
-} from 'lucide-react';
+import { CalendarDays, ClipboardList, LifeBuoy, UserCog, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/context/AppContext';
 import { LogoLockup } from './Logo';
@@ -17,31 +7,30 @@ import { LogoLockup } from './Logo';
 interface NavItem {
   to: string;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: typeof ClipboardList;
   adminOnly?: boolean;
+  managementOnly?: boolean;
   badge?: number;
 }
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
-  const { isAdmin, summary } = useApp();
+  const { isAdmin, isManagement, summary } = useApp();
 
   const items: NavItem[] = [
-    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/file-a-leave', label: 'File a Leave', icon: FilePlus2 },
-    { to: '/my-pto', label: 'My PTO', icon: UserRound },
-    { to: '/calendar', label: 'PTO Calendar', icon: CalendarDays },
     {
       to: '/requests',
       label: 'PTO Requests',
       icon: ClipboardList,
       badge: summary.pendingRequests || undefined,
     },
-    { to: '/employees', label: 'Employees', icon: Users, adminOnly: true },
+    { to: '/my-pto', label: 'PTO Tracker', icon: UserRound, managementOnly: true },
+    { to: '/calendar', label: 'PTO Calendar', icon: CalendarDays },
     { to: '/accounts', label: 'Account Management', icon: UserCog, adminOnly: true },
-    { to: '/email-preview', label: 'Email Notification', icon: Mail },
   ];
 
-  const visible = items.filter((i) => !i.adminOnly || isAdmin);
+  const visible = items.filter(
+    (i) => (!i.adminOnly || isAdmin) && (!i.managementOnly || isManagement),
+  );
 
   return (
     <nav className="flex-1 space-y-1 px-3 py-4">

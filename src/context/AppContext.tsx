@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { employees as seedEmployees, ptoRequests as seedRequests, userAccounts as seedAccounts } from '@/data';
 import { computeBalances, computeSummary } from '@/lib/pto';
+import { PRINCES_EMAIL } from '@/lib/theme';
 import { todayISO, uid } from '@/lib/utils';
 import type {
   AppRole,
@@ -60,6 +61,8 @@ interface AppContextValue {
   /** Effective application role — drives navigation and permissions. */
   role: AppRole;
   isAdmin: boolean;
+  /** Admins, plus Princes Aloha Gomez by name even if her role ever changes. */
+  isManagement: boolean;
 
   employees: Employee[];
   requests: PTORequest[];
@@ -298,11 +301,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAccounts((prev) => prev.filter((a) => a.id !== accountId));
   }, []);
 
+  const isAdmin = currentUser.appRole === 'Admin';
+  const isManagement = isAdmin || currentUser.email.toLowerCase() === PRINCES_EMAIL;
+
   const value: AppContextValue = {
     session,
     currentUser,
     role: currentUser.appRole,
-    isAdmin: currentUser.appRole === 'Admin',
+    isAdmin,
+    isManagement,
     employees,
     requests,
     accounts,

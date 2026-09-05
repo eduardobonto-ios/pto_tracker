@@ -82,3 +82,6 @@ export const PTO_NOTIFICATION_RECIPIENTS = [
   'princes@valveman.com',
   'pgomez@fswelsford.com',
 ] as const;
+
+/** Team manager who gets management-level access even outside the Admin role. */
+export const PRINCES_EMAIL = 'princes@valveman.com';
