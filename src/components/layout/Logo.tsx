@@ -36,24 +36,12 @@ export function LogoMark({ className }: { className?: string }) {
   );
 }
 
-export function LogoLockup({
-  className,
-  compact,
-}: {
-  className?: string;
-  compact?: boolean;
-}) {
+export function LogoLockup({ className }: { className?: string }) {
   return (
-    <div className={cn('flex items-center gap-3', className)}>
-      <LogoMark className="h-10 w-10 text-white" />
-      {!compact && (
-        <div className="min-w-0 leading-none">
-          <div className="text-[15px] font-bold tracking-[0.02em] text-white">VALVEMAN</div>
-          <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-300">
-            PTO Tracker
-          </div>
-        </div>
-      )}
-    </div>
+    <img
+      src="/valveXwelsford.png"
+      alt="Valveman x Welsford"
+      className={cn('h-20 w-auto max-w-full object-contain', className)}
+    />
   );
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowRight, Lock, Mail, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Field, Input } from '@/components/ui/Field';
-import { LogoMark } from '@/components/layout/Logo';
+import { LogoMark, LogoLockup } from '@/components/layout/Logo';
 import { useApp } from '@/context/AppContext';
 
 export function LoginPage() {
@@ -28,14 +28,8 @@ export function LoginPage() {
         <div className="pointer-events-none absolute -left-24 top-1/3 h-96 w-96 rounded-full bg-brand-500/20 blur-3xl" />
         <div className="pointer-events-none absolute -right-16 bottom-0 h-80 w-80 rounded-full bg-accent-500/15 blur-3xl" />
 
-        <div className="relative flex items-center gap-3">
-          <LogoMark className="h-11 w-11 text-white" />
-          <div className="leading-none">
-            <p className="text-[17px] font-bold tracking-[0.02em] text-white">VALVEMAN</p>
-            <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-300">
-              PTO Tracker
-            </p>
-          </div>
+        <div className="relative">
+          <LogoLockup className="h-16" />
         </div>
 
         <div className="relative max-w-md">
