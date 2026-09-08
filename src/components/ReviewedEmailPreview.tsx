@@ -1,29 +1,30 @@
 import { Link } from 'react-router-dom';
+import { Line, MetaRow } from '@/components/EmailPreview';
 import { useApp } from '@/context/AppContext';
-import { PTO_NOTIFICATION_RECIPIENTS } from '@/lib/theme';
 import { formatDateRange, formatDays } from '@/lib/utils';
 import type { PTORequest } from '@/types';
 
 /**
- * Rendering of the "new request" notification — also what's actually sent
- * when EmailJS is configured (see `lib/notifications.ts`); otherwise this is
- * preview-only.
+ * Rendering of the notification sent to the employee once their request has
+ * been approved or rejected — the counterpart to `EmailPreview` (the
+ * "new request" notice sent to the admin/approver). Nothing is sent from
+ * this prototype; see `lib/notifications.ts` for the real send path.
  */
-export function EmailPreview({ request }: { request: PTORequest }) {
+export function ReviewedEmailPreview({ request }: { request: PTORequest }) {
   const { employees } = useApp();
   const employee = employees.find((e) => e.id === request.employeeId);
+  const approved = request.status === 'Approved';
+  const adminComment = approved ? request.approvalComment : request.rejectionReason;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slateish-200/80 bg-white shadow-card">
       {/* Envelope metadata */}
       <div className="space-y-1 border-b border-slateish-200/70 bg-slateish-50/70 px-5 py-3 text-[12.5px] sm:px-6">
-        <MetaRow label="To">
-          {PTO_NOTIFICATION_RECIPIENTS.join(', ')}
-        </MetaRow>
+        <MetaRow label="To">{employee?.email ?? '—'}</MetaRow>
         <MetaRow label="From">Valveman PTO Tracker &lt;no-reply@valveman.com&gt;</MetaRow>
         <MetaRow label="Subject">
           <span className="font-semibold text-navy-900">
-            New leave request pending review — {employee?.name} ({request.id})
+            Your PTO request was {request.status.toLowerCase()} — {request.id}
           </span>
         </MetaRow>
       </div>
@@ -40,34 +41,32 @@ export function EmailPreview({ request }: { request: PTORequest }) {
 
           <div className="px-6 py-4">
             <p className="text-[13.5px] leading-snug text-slateish-700">
-              A new leave request has been filed and is pending your review:
+              {approved
+                ? 'Good news — your leave request has been approved:'
+                : 'Your leave request was not approved this time:'}
             </p>
 
             <div className="mt-3 space-y-1.5 rounded-xl border border-slateish-200 bg-slateish-50/70 p-3">
-              <Line emoji="👤" label="Team Member" value={employee?.name ?? '—'} />
-              <Line emoji="💼" label="Role" value={employee?.jobTitle ?? '—'} />
-              <Line emoji="🏢" label="Department" value={employee?.department ?? '—'} />
               <Line
                 emoji="📅"
                 label="Dates"
                 value={formatDateRange(request.startDate, request.endDate)}
               />
+              <Line emoji="🏷" label="Leave Type" value={request.leaveType} />
               <Line
                 emoji="⏱"
                 label="Duration"
-                value={`${formatDays(request.days)} day(s) · ${request.durationType}`}
+                value={`${formatDays(request.days)} day(s)`}
               />
-              <Line emoji="💰" label="Pay Status" value={request.payStatus} />
-              <Line emoji="🤝" label="Coverage / POC" value={request.coverage || 'N/A'} />
-              <Line
-                emoji="📝"
-                label="Notes"
-                value={`${request.leaveType} — ${request.reason || 'No additional detail'}`}
-              />
+              <Line emoji={approved ? '✅' : '⛔'} label="Status" value={request.status} />
+              <Line emoji="🧑‍💼" label="Reviewed By" value={request.reviewedBy ?? '—'} />
+              {adminComment && (
+                <Line emoji="📝" label="Admin Comments" value={adminComment} />
+              )}
             </div>
 
             <p className="mt-3 text-[13.5px] leading-snug text-slateish-700">
-              Open the PTO Tracker to approve or decline:
+              View the full request in the PTO Tracker:
             </p>
 
             <Link
@@ -84,45 +83,12 @@ export function EmailPreview({ request }: { request: PTORequest }) {
 
           <div className="border-t border-slateish-200 px-6 py-2.5">
             <p className="text-[11px] leading-snug text-slateish-400">
-              You are receiving this because you review PTO requests for Valveman. This is an
+              You are receiving this because you filed a PTO request with Valveman. This is an
               automated message from the Valveman PTO Tracker.
             </p>
           </div>
         </div>
       </div>
     </div>
-  );
-}
-
-export function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex gap-3">
-      <span className="w-14 shrink-0 font-semibold uppercase tracking-wide text-slateish-400">
-        {label}
-      </span>
-      <span className="min-w-0 break-words text-slateish-600">{children}</span>
-    </div>
-  );
-}
-
-export function Line({
-  emoji,
-  label,
-  value,
-}: {
-  emoji: string;
-  label: string;
-  value: string;
-}) {
-  return (
-    <p className="flex gap-2 text-[13.5px] leading-relaxed">
-      <span aria-hidden className="shrink-0">
-        {emoji}
-      </span>
-      <span className="min-w-0">
-        <span className="font-semibold text-navy-900">{label}:</span>{' '}
-        <span className="text-slateish-700">{value}</span>
-      </span>
-    </p>
   );
 }

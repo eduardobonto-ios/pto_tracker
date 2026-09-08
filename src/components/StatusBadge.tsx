@@ -5,9 +5,10 @@ const statusTone: Record<PTOStatus, BadgeTone> = {
   Pending: 'warning',
   Approved: 'success',
   Rejected: 'danger',
+  Cancelled: 'neutral',
 };
 
-/** Request status: Pending = amber, Approved = green, Rejected = red. */
+/** Request status: Pending = amber, Approved = green, Rejected = red, Cancelled = grey. */
 export function StatusBadge({ status }: { status: PTOStatus }) {
   return (
     <Badge tone={statusTone[status]} dot>

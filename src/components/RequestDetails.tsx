@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import {
+  Ban,
   CalendarRange,
   Check,
   CircleSlash,
   Clock3,
   FileText,
   Mail,
+  MessageSquare,
   X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Textarea } from '@/components/ui/Field';
+import { Field, Input, Textarea } from '@/components/ui/Field';
 import { Avatar, DetailRow, SectionTitle } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
 import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
@@ -24,10 +26,25 @@ import type { PTORequest } from '@/types';
  * and the standalone `/requests/:id` route that email links will target.
  */
 export function RequestDetails({ request }: { request: PTORequest }) {
-  const { employees, balances } = useApp();
+  const { employees, balances, currentUser, isAdmin, cancelRequest } = useApp();
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   const employee = employees.find((e) => e.id === request.employeeId);
   const balance = employee ? balances[employee.id] : undefined;
+
+  // Only the requester (or an admin acting on their behalf) can cancel, and
+  // only while the request is still open — a Rejected or already-Cancelled
+  // record is terminal.
+  const canCancel =
+    (currentUser.id === request.employeeId || isAdmin) &&
+    (request.status === 'Pending' || request.status === 'Approved');
+
+  function handleCancel() {
+    cancelRequest(request.id, cancelReason.trim() || undefined);
+    setCancelOpen(false);
+    setCancelReason('');
+  }
 
   return (
     <div className="space-y-5">
@@ -59,6 +76,11 @@ export function RequestDetails({ request }: { request: PTORequest }) {
             <StatusBadge status={request.status} />
             <PayBadge payStatus={request.payStatus} />
             <span className="font-mono text-[11px] text-slateish-400">{request.id}</span>
+            {canCancel && (
+              <Button size="sm" variant="secondary" onClick={() => setCancelOpen(true)}>
+                <Ban size={14} /> Cancel request
+              </Button>
+            )}
           </div>
         </div>
 
@@ -128,6 +150,29 @@ export function RequestDetails({ request }: { request: PTORequest }) {
             </p>
           </div>
         )}
+
+        {request.approvalComment && (
+          <div className="mt-4 rounded-xl border border-success-100 bg-success-50 p-4">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success-700">
+              <MessageSquare size={13} /> Admin comments
+            </p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-success-700">
+              {request.approvalComment}
+            </p>
+          </div>
+        )}
+
+        {request.status === 'Cancelled' && (
+          <div className="mt-4 rounded-xl border border-slateish-200 bg-slateish-50 p-4">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slateish-500">
+              <Ban size={13} /> Cancelled
+            </p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-slateish-600">
+              {request.timeline.find((e) => e.label === 'Cancelled')?.note ??
+                'Cancelled by the employee.'}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Timeline */}
@@ -142,13 +187,17 @@ export function RequestDetails({ request }: { request: PTORequest }) {
                     ? 'bg-success-100 text-success-600'
                     : event.label === 'Rejected'
                       ? 'bg-danger-100 text-danger-600'
-                      : 'bg-brand-100 text-brand-600'
+                      : event.label === 'Cancelled'
+                        ? 'bg-slateish-100 text-slateish-500'
+                        : 'bg-brand-100 text-brand-600'
                 }`}
               >
                 {event.label === 'Approved' ? (
                   <Check size={11} strokeWidth={3} />
                 ) : event.label === 'Rejected' ? (
                   <X size={11} strokeWidth={3} />
+                ) : event.label === 'Cancelled' ? (
+                  <Ban size={11} strokeWidth={3} />
                 ) : (
                   <Clock3 size={11} strokeWidth={3} />
                 )}
@@ -188,6 +237,34 @@ export function RequestDetails({ request }: { request: PTORequest }) {
           <FileText size={13} /> Permanent link: /requests/{request.id}
         </Link>
       </div>
+
+      <Modal
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title="Cancel this request?"
+        description="The record stays in the log with a Cancelled status and no longer counts toward the PTO balance."
+        icon={<Ban size={18} className="text-danger-600" />}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCancelOpen(false)}>
+              Keep request
+            </Button>
+            <Button variant="danger" onClick={handleCancel}>
+              Confirm cancellation
+            </Button>
+          </>
+        }
+      >
+        <Field label="Reason (optional)">
+          <Textarea
+            rows={3}
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="e.g. Plans changed."
+          />
+        </Field>
+      </Modal>
     </div>
   );
 }
@@ -208,6 +285,7 @@ export function RequestActions({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectError, setRejectError] = useState('');
+  const [approveComment, setApproveComment] = useState('');
 
   if (!isAdmin || request.status !== 'Pending') return null;
 
@@ -225,6 +303,14 @@ export function RequestActions({
 
   return (
     <>
+      <div className="w-full">
+        <Input
+          value={approveComment}
+          onChange={(e) => setApproveComment(e.target.value)}
+          placeholder="Note to the employee (optional) — included in their notification"
+          className="h-9 text-[12.5px]"
+        />
+      </div>
       <p className="mr-auto text-[13px] text-slateish-500">
         Approving deducts{' '}
         <strong className="text-navy-800">{formatDays(request.days)} day(s)</strong> from this
@@ -236,7 +322,7 @@ export function RequestActions({
       <Button
         variant="success"
         onClick={() => {
-          approveRequest(request.id);
+          approveRequest(request.id, approveComment.trim() || undefined);
           onDone?.();
         }}
       >

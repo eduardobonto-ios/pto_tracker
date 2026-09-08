@@ -168,7 +168,12 @@ export function AccountCreationFields({ f }: { f: AccountCreationFormState }) {
         <Field label="Hire date" required error={f.errors.hireDate} help="PTO unlocks 6 months later.">
           <Input type="date" value={f.hireDate} onChange={(e) => f.setHireDate(e.target.value)} />
         </Field>
-        <Field label="Annual PTO allowance" required error={f.errors.allowance}>
+        <Field
+          label="Annual PTO allowance (legacy)"
+          required
+          error={f.errors.allowance}
+          help="PTO balances are now calculated automatically from Hire Date — this value is kept for record-keeping only and no longer drives the balance."
+        >
           <Input
             type="number"
             min="0"

@@ -8,6 +8,16 @@ import { Field, Select } from '@/components/ui/Field';
 import { useApp } from '@/context/AppContext';
 import { DEPARTMENTS, LEAVE_TYPES, type PTORequest } from '@/types';
 
+/**
+ * Visible to every employee and admin (see `App.tsx` — this route carries no
+ * role guard) so the whole team can see scheduled absences.
+ *
+ * TODO(Google Calendar integration): this page currently only reads from the
+ * in-app `requests` list. A future phase can additionally sync approved leave
+ * to the FSW Google Calendar via `lib/calendarSync.ts` — that module defines
+ * the seam and documents the credentials it will need. No Google connection
+ * exists yet, and none is required for this calendar to work.
+ */
 export function PTOCalendarPage() {
   const { requests, employees, isAdmin } = useApp();
 

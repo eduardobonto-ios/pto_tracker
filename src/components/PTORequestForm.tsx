@@ -361,11 +361,10 @@ export function LeaveRequestConfirmations({ f }: { f: LeaveRequestFormState }) {
         footer={<Button onClick={() => f.setConfirmedId(null)}>Done</Button>}
       >
         <p className="text-[13.5px] leading-relaxed text-slateish-600">
-          Your request is now in the queue for Management review. In the backend phase an
-          email notification will be sent to{' '}
-          <span className="font-semibold text-navy-800">princes@valveman.com</span> and{' '}
-          <span className="font-semibold text-navy-800">pgomez@fswelsford.com</span> with a
-          direct link to this request.
+          Your request is now in the queue for Management review. A notification has been
+          queued for the admin/approver team with a direct link to this request — see{' '}
+          <span className="font-semibold text-navy-800">Email Notification Preview</span> to
+          check what it looks like and whether it actually sent.
         </p>
       </Modal>
     </>

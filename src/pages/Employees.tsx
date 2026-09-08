@@ -220,7 +220,7 @@ export function EmployeesPage() {
                   <EligibilityBadge eligible={selectedBalance.eligible} />
                 </DetailRow>
                 <DetailRow label="Annual allowance">
-                  {formatDays(selected.annualPtoAllowance)} days
+                  {formatDays(selectedBalance.totalPto)} days
                 </DetailRow>
                 <DetailRow label="Days used">
                   {formatDays(selectedBalance.daysUsed)}

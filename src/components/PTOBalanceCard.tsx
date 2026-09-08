@@ -92,7 +92,7 @@ export function PTOBalanceCard({
           />
           <Stat
             label="Annual allowance"
-            value={`${formatDays(employee.annualPtoAllowance)} days`}
+            value={`${formatDays(balance.totalPto)} days`}
             className="col-span-2"
           />
         </div>

@@ -77,6 +77,26 @@ export const APP_SUITE = 'Valveman Internal Suite';
 /** Eligibility rule: PTO unlocks after this many months of employment. */
 export const PTO_ELIGIBILITY_MONTHS = 6;
 
+/**
+ * Annual entitlement rules (see `lib/pto.ts#computeEntitlement`).
+ *
+ * Every employee starts at `PTO_BASE_ENTITLEMENT_DAYS` once they clear the
+ * 6-month eligibility rule. From there:
+ *  - Employees hired in `PTO_NEW_HIRE_COHORT_START_YEAR` or later gain
+ *    `PTO_ANNUAL_INCREMENT_DAYS` on every hire-date anniversary.
+ *  - Employees hired before that year instead gain
+ *    `PTO_ANNUAL_INCREMENT_DAYS` on every `PTO_LEGACY_CREDIT_MONTH`/
+ *    `PTO_LEGACY_CREDIT_DAY` (June 1) that passes after they're eligible.
+ * Entitlement never exceeds `PTO_MAX_ENTITLEMENT_DAYS` for either cohort.
+ */
+export const PTO_BASE_ENTITLEMENT_DAYS = 5;
+export const PTO_ANNUAL_INCREMENT_DAYS = 2;
+export const PTO_MAX_ENTITLEMENT_DAYS = 10;
+export const PTO_NEW_HIRE_COHORT_START_YEAR = 2026;
+/** Month is 0-indexed: 5 = June. */
+export const PTO_LEGACY_CREDIT_MONTH = 5;
+export const PTO_LEGACY_CREDIT_DAY = 1;
+
 /** Recipients wired up in the backend phase (see EmailPreview). */
 export const PTO_NOTIFICATION_RECIPIENTS = [
   'princes@valveman.com',

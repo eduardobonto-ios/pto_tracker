@@ -163,7 +163,7 @@ export function MyPTOPage() {
                       {balance?.eligible ? 'Yes' : 'No'}
                     </Td>
                     <Td align="right" className="tabular-nums">
-                      {employee.annualPtoAllowance}
+                      {formatDays(balance?.totalPto ?? 0)}
                     </Td>
                     <Td align="right" className="tabular-nums">
                       {(balance?.daysUsed ?? 0).toFixed(1)}

@@ -6,7 +6,15 @@
  * Supabase RPCs — keep them free of React and of data-fetching concerns.
  */
 
-import { PTO_ELIGIBILITY_MONTHS } from './theme';
+import {
+  PTO_ANNUAL_INCREMENT_DAYS,
+  PTO_BASE_ENTITLEMENT_DAYS,
+  PTO_ELIGIBILITY_MONTHS,
+  PTO_LEGACY_CREDIT_DAY,
+  PTO_LEGACY_CREDIT_MONTH,
+  PTO_MAX_ENTITLEMENT_DAYS,
+  PTO_NEW_HIRE_COHORT_START_YEAR,
+} from './theme';
 import type {
   DashboardSummary,
   DurationType,
@@ -36,6 +44,44 @@ export function eligibilityDate(hireDateIso: string): string {
 /** Whether the employee is eligible as of `asOf` (defaults to today). */
 export function isEligible(hireDateIso: string, asOf: Date = new Date()): boolean {
   return parseISODate(eligibilityDate(hireDateIso)).getTime() <= asOf.getTime();
+}
+
+/**
+ * Annual PTO entitlement, computed purely from the employee's Hire Date —
+ * see the rules documented next to the constants in `lib/theme.ts`.
+ *
+ * Returns 0 before the employee clears the 6-month eligibility rule; never
+ * exceeds `PTO_MAX_ENTITLEMENT_DAYS` afterwards.
+ */
+export function computeEntitlement(hireDateIso: string, asOf: Date = new Date()): number {
+  const hire = parseISODate(hireDateIso);
+  const eligible = parseISODate(eligibilityDate(hireDateIso));
+  if (asOf.getTime() < eligible.getTime()) return 0;
+
+  let days = PTO_BASE_ENTITLEMENT_DAYS;
+
+  if (hire.getFullYear() >= PTO_NEW_HIRE_COHORT_START_YEAR) {
+    // +2 days on every hire-date anniversary that has passed.
+    let anniversary = new Date(hire.getFullYear() + 1, hire.getMonth(), hire.getDate());
+    while (anniversary.getTime() <= asOf.getTime()) {
+      days += PTO_ANNUAL_INCREMENT_DAYS;
+      anniversary = new Date(anniversary.getFullYear() + 1, hire.getMonth(), hire.getDate());
+    }
+  } else {
+    // +2 days on every June 1 that passes once eligible.
+    const eligYear = eligible.getFullYear();
+    const juneOfEligYear = new Date(eligYear, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
+    let cursor =
+      juneOfEligYear.getTime() >= eligible.getTime()
+        ? juneOfEligYear
+        : new Date(eligYear + 1, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
+    while (cursor.getTime() <= asOf.getTime()) {
+      days += PTO_ANNUAL_INCREMENT_DAYS;
+      cursor = new Date(cursor.getFullYear() + 1, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
+    }
+  }
+
+  return Math.min(days, PTO_MAX_ENTITLEMENT_DAYS);
 }
 
 /** Chargeable days implied by a duration selection over a date range. */
@@ -68,7 +114,8 @@ export function computeDays(
  * Balance for one employee.
  *
  * Only Approved *and* Paid requests consume the allowance. Pending days are
- * surfaced separately and never permanently deduct until approval.
+ * surfaced separately and never permanently deduct until approval. Cancelled
+ * and Rejected requests never reach either bucket, so they never deduct.
  */
 export function computeBalance(employee: Employee, requests: PTORequest[]): PTOBalance {
   const mine = requests.filter((r) => r.employeeId === employee.id);
@@ -81,7 +128,9 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
     mine.filter((r) => r.status === 'Pending').reduce((sum, r) => sum + r.days, 0),
   );
   const eligible = isEligible(employee.hireDate);
-  const totalPto = employee.annualPtoAllowance;
+  // Entitlement is derived from Hire Date rather than the legacy per-employee
+  // allowance field — see `computeEntitlement` / lib/theme.ts.
+  const totalPto = computeEntitlement(employee.hireDate);
   // An employee who has not cleared the 6-month rule cannot draw down yet, so
   // their remaining balance reads 0 until their eligibility date passes.
   const daysRemaining = eligible ? round(totalPto - daysUsed) : 0;
@@ -143,8 +192,8 @@ export function requestsOnDate(requests: PTORequest[], iso: string): PTORequest[
  * date range — powers the "Department Leave Notice" warning shown on the
  * leave request form and on the manager's review screen.
  *
- * Rejected requests are excluded; Pending and Approved both count so a
- * manager can spot a brewing conflict before it's even approved.
+ * Rejected and Cancelled requests are excluded; Pending and Approved both
+ * count so a manager can spot a brewing conflict before it's even approved.
  */
 export function departmentLeaveConflicts(
   employee: Employee,
@@ -161,7 +210,7 @@ export function departmentLeaveConflicts(
   return requests
     .filter((r) => r.id !== excludeRequestId)
     .filter((r) => r.employeeId !== employee.id)
-    .filter((r) => r.status !== 'Rejected')
+    .filter((r) => r.status !== 'Rejected' && r.status !== 'Cancelled')
     .filter((r) => {
       const rStart = parseISODate(r.startDate).getTime();
       const rEnd = parseISODate(r.endDate || r.startDate).getTime();

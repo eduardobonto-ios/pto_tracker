@@ -46,9 +46,9 @@ export const LEAVE_TYPES: LeaveType[] = [
   'Other',
 ];
 
-export type PTOStatus = 'Pending' | 'Approved' | 'Rejected';
+export type PTOStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
 
-export const PTO_STATUSES: PTOStatus[] = ['Pending', 'Approved', 'Rejected'];
+export const PTO_STATUSES: PTOStatus[] = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
 
 export type PayStatus = 'Paid' | 'Unpaid';
 
@@ -88,7 +88,7 @@ export interface Employee {
 
 export interface TimelineEvent {
   id: string;
-  label: 'Submitted' | 'Reviewed' | 'Approved' | 'Rejected' | 'Updated';
+  label: 'Submitted' | 'Reviewed' | 'Approved' | 'Rejected' | 'Cancelled' | 'Updated';
   /** ISO datetime. */
   at: string;
   actor: string;
@@ -121,8 +121,12 @@ export interface PTORequest {
   /** Combined display note: "<Leave Type> — <reason>". */
   notes: string;
   rejectionReason?: string;
+  /** Optional note the admin leaves when approving — surfaced in the employee notification. */
+  approvalComment?: string;
   reviewedBy?: string;
   reviewedAt?: string;
+  /** Set when the employee (or an admin on their behalf) cancels the request. */
+  cancelledAt?: string;
   timeline: TimelineEvent[];
 }
 

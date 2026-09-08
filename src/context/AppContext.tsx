@@ -7,6 +7,13 @@ import {
   type ReactNode,
 } from 'react';
 import { employees as seedEmployees, ptoRequests as seedRequests, userAccounts as seedAccounts } from '@/data';
+import { pushApprovedLeaveToGoogleCalendar } from '@/lib/calendarSync';
+import {
+  buildNewRequestNotification,
+  buildReviewedNotification,
+  sendNotification,
+  type NotificationPayload,
+} from '@/lib/notifications';
 import { computeBalances, computeSummary } from '@/lib/pto';
 import { PRINCES_EMAIL } from '@/lib/theme';
 import { todayISO, uid } from '@/lib/utils';
@@ -72,6 +79,8 @@ interface AppContextValue {
 
   /** The last request submitted in this session, used by the email preview. */
   lastSubmittedId: string | null;
+  /** Simulated notification log — see lib/notifications.ts. Newest first. */
+  notifications: NotificationPayload[];
 
   signIn: (email: string) => void;
   signOut: () => void;
@@ -80,8 +89,10 @@ interface AppContextValue {
   switchUser: (employeeId: string) => void;
 
   submitRequest: (input: NewRequestInput) => PTORequest;
-  approveRequest: (id: string) => void;
+  approveRequest: (id: string, comment?: string) => void;
   rejectRequest: (id: string, rejectionReason: string) => void;
+  /** Employee cancelling their own request (or an admin on their behalf). Keeps the record, just changes its status. */
+  cancelRequest: (id: string, reason?: string) => void;
 
   createAccount: (input: NewAccountInput) => void;
   resetPassword: (accountId: string) => string;
@@ -102,6 +113,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [requests, setRequests] = useState<PTORequest[]>(seedRequests);
   const [accounts, setAccounts] = useState<UserAccount[]>(seedAccounts);
   const [lastSubmittedId, setLastSubmittedId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<NotificationPayload[]>([]);
 
   const currentUser = useMemo(
     () => employees.find((e) => e.id === currentUserId) ?? employees[0],
@@ -176,66 +188,123 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
       setRequests((prev) => [request, ...prev]);
       setLastSubmittedId(request.id);
+
+      // Notify the appropriate admin/approver that a new request needs review.
+      // See lib/notifications.ts — nothing is actually emailed in this prototype.
+      const notification = sendNotification(buildNewRequestNotification(request, employees));
+      setNotifications((prev) => [notification, ...prev]);
+
       return request;
     },
     [requests.length, employees],
   );
 
   const approveRequest = useCallback(
-    (id: string) => {
+    (id: string, comment?: string) => {
       const now = new Date().toISOString();
+      let updated: PTORequest | undefined;
       setRequests((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? {
-                ...r,
-                status: 'Approved',
-                reviewedBy: currentUser.name,
-                reviewedAt: now,
-                rejectionReason: undefined,
-                timeline: [
-                  ...r.timeline,
-                  {
-                    id: uid('tl'),
-                    label: 'Approved' as const,
-                    at: now,
-                    actor: currentUser.name,
-                    note: 'Coverage confirmed and balance checked.',
-                  },
-                ],
-              }
-            : r,
-        ),
+        prev.map((r) => {
+          if (r.id !== id) return r;
+          const next: PTORequest = {
+            ...r,
+            status: 'Approved',
+            reviewedBy: currentUser.name,
+            reviewedAt: now,
+            rejectionReason: undefined,
+            approvalComment: comment?.trim() || undefined,
+            timeline: [
+              ...r.timeline,
+              {
+                id: uid('tl'),
+                label: 'Approved' as const,
+                at: now,
+                actor: currentUser.name,
+                note: comment?.trim() || 'Coverage confirmed and balance checked.',
+              },
+            ],
+          };
+          updated = next;
+          return next;
+        }),
       );
+      if (updated) {
+        // Notify the employee that their request was approved.
+        const notification = sendNotification(
+          buildReviewedNotification(updated, employees, currentUser.name),
+        );
+        setNotifications((prev) => [notification, ...prev]);
+        // TODO(Google Calendar integration): no-op today — see lib/calendarSync.ts.
+        void pushApprovedLeaveToGoogleCalendar(updated);
+      }
     },
-    [currentUser.name],
+    [currentUser.name, employees],
   );
 
   const rejectRequest = useCallback(
     (id: string, rejectionReason: string) => {
       const now = new Date().toISOString();
+      let updated: PTORequest | undefined;
       setRequests((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? {
-                ...r,
-                status: 'Rejected',
-                reviewedBy: currentUser.name,
-                reviewedAt: now,
-                rejectionReason,
-                timeline: [
-                  ...r.timeline,
-                  {
-                    id: uid('tl'),
-                    label: 'Rejected' as const,
-                    at: now,
-                    actor: currentUser.name,
-                    note: rejectionReason,
-                  },
-                ],
-              }
-            : r,
-        ),
+        prev.map((r) => {
+          if (r.id !== id) return r;
+          const next: PTORequest = {
+            ...r,
+            status: 'Rejected',
+            reviewedBy: currentUser.name,
+            reviewedAt: now,
+            rejectionReason,
+            timeline: [
+              ...r.timeline,
+              {
+                id: uid('tl'),
+                label: 'Rejected' as const,
+                at: now,
+                actor: currentUser.name,
+                note: rejectionReason,
+              },
+            ],
+          };
+          updated = next;
+          return next;
+        }),
+      );
+      if (updated) {
+        // Notify the employee that their request was rejected.
+        const notification = sendNotification(
+          buildReviewedNotification(updated, employees, currentUser.name),
+        );
+        setNotifications((prev) => [notification, ...prev]);
+      }
+    },
+    [currentUser.name, employees],
+  );
+
+  const cancelRequest = useCallback(
+    (id: string, reason?: string) => {
+      const now = new Date().toISOString();
+      setRequests((prev) =>
+        prev.map((r) => {
+          if (r.id !== id) return r;
+          // Only an open request (still Pending or already Approved) can be
+          // cancelled — a Rejected or already-Cancelled record is terminal.
+          if (r.status !== 'Pending' && r.status !== 'Approved') return r;
+          return {
+            ...r,
+            status: 'Cancelled',
+            cancelledAt: now,
+            timeline: [
+              ...r.timeline,
+              {
+                id: uid('tl'),
+                label: 'Cancelled' as const,
+                at: now,
+                actor: currentUser.name,
+                note: reason?.trim() || 'Cancelled by the employee.',
+              },
+            ],
+          };
+        }),
       );
     },
     [currentUser.name],
@@ -316,6 +385,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     balances,
     summary,
     lastSubmittedId,
+    notifications,
     signIn,
     signOut,
     completeFirstLogin,
@@ -323,6 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     submitRequest,
     approveRequest,
     rejectRequest,
+    cancelRequest,
     createAccount,
     resetPassword,
     revokeAccess,

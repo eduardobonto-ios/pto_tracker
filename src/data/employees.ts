@@ -4,8 +4,9 @@ import type { Employee } from '@/types';
  * Mock employee roster — mirrors the "PTO Tracker" tab of the legacy
  * Google Sheet (2026). Replace with a Supabase `employees` query in phase 2.
  *
- * `annualPtoAllowance` is intentionally per-employee: Valveman has no single
- * company-wide policy yet (observed values in the sheet are 5 and 10 days).
+ * `annualPtoAllowance` is a legacy field kept for record-keeping only — actual
+ * PTO entitlement is now calculated automatically from `hireDate` (see
+ * `lib/pto.ts#computeEntitlement`), not from this field.
  */
 export const employees: Employee[] = [
   {
