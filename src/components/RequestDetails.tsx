@@ -14,6 +14,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Field, Textarea } from '@/components/ui/Field';
 import { Avatar, DetailRow, SectionTitle } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
+import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
 import { useApp } from '@/context/AppContext';
 import { formatDateLong, formatDateRange, formatDateTime, formatDays } from '@/lib/utils';
 import type { PTORequest } from '@/types';
@@ -74,6 +75,15 @@ export function RequestDetails({ request }: { request: PTORequest }) {
           </div>
         )}
       </div>
+
+      {request.status === 'Pending' && (
+        <DepartmentLeaveNotice
+          employee={employee}
+          startDate={request.startDate}
+          endDate={request.endDate}
+          excludeRequestId={request.id}
+        />
+      )}
 
       {/* Request facts */}
       <div className="rounded-2xl border border-slateish-200/80 bg-white p-5 shadow-card">

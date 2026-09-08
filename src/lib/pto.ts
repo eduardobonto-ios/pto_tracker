@@ -16,6 +16,11 @@ import type {
 } from '@/types';
 import { parseISODate, toISODate } from './utils';
 
+export interface DepartmentLeaveConflict {
+  employee: Employee;
+  request: PTORequest;
+}
+
 /**
  * Company rule: an employee becomes eligible for PTO after 6 months of
  * employment. Returns the ISO date on which eligibility starts.
@@ -131,6 +136,45 @@ export function requestsOnDate(requests: PTORequest[], iso: string): PTORequest[
       parseISODate(r.startDate).getTime() <= t &&
       parseISODate(r.endDate || r.startDate).getTime() >= t,
   );
+}
+
+/**
+ * Other employees in the same department whose leave overlaps the given
+ * date range — powers the "Department Leave Notice" warning shown on the
+ * leave request form and on the manager's review screen.
+ *
+ * Rejected requests are excluded; Pending and Approved both count so a
+ * manager can spot a brewing conflict before it's even approved.
+ */
+export function departmentLeaveConflicts(
+  employee: Employee,
+  startDate: string,
+  endDate: string | undefined,
+  employees: Employee[],
+  requests: PTORequest[],
+  excludeRequestId?: string,
+): DepartmentLeaveConflict[] {
+  if (!startDate) return [];
+  const start = parseISODate(startDate).getTime();
+  const end = parseISODate(endDate || startDate).getTime();
+
+  return requests
+    .filter((r) => r.id !== excludeRequestId)
+    .filter((r) => r.employeeId !== employee.id)
+    .filter((r) => r.status !== 'Rejected')
+    .filter((r) => {
+      const rStart = parseISODate(r.startDate).getTime();
+      const rEnd = parseISODate(r.endDate || r.startDate).getTime();
+      return rStart <= end && rEnd >= start;
+    })
+    .reduce<DepartmentLeaveConflict[]>((acc, r) => {
+      const other = employees.find((e) => e.id === r.employeeId);
+      if (other && other.department === employee.department) {
+        acc.push({ employee: other, request: r });
+      }
+      return acc;
+    }, [])
+    .sort((a, b) => a.request.startDate.localeCompare(b.request.startDate));
 }
 
 /** Approved requests starting on or after today, soonest first. */

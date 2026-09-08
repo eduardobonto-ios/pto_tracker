@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { DetailRow, PillGroup } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
+import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
 import { useApp, type NewRequestInput } from '@/context/AppContext';
 import { computeDays, defaultPayStatus } from '@/lib/pto';
 import { formatDateRange, formatDays, todayISO } from '@/lib/utils';
@@ -156,7 +157,7 @@ type LeaveRequestFormState = ReturnType<typeof useLeaveRequestForm>;
 
 /** The field inputs only — no wrapping card and no submit buttons, so callers can place those wherever fits (inline, or a modal's sticky footer). */
 export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
-  const { form, set, errors, isAdmin, employees, totalHours, days, payStatus } = f;
+  const { form, set, errors, isAdmin, employees, totalHours, days, payStatus, selectedEmployee } = f;
 
   return (
     <div className="space-y-5">
@@ -217,6 +218,12 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
           />
         </Field>
       </div>
+
+      <DepartmentLeaveNotice
+        employee={selectedEmployee}
+        startDate={form.startDate}
+        endDate={form.endDate}
+      />
 
       <Field label="Duration" required>
         <PillGroup options={DURATION_TYPES} value={form.duration} onChange={(v) => set('duration', v)} />
