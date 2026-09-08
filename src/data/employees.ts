@@ -42,7 +42,8 @@ export const employees: Employee[] = [
     department: 'Administration',
     hireDate: '2025-01-08',
     annualPtoAllowance: 5,
-    appRole: 'Employee',
+    // Promoted to Admin for testing — see the two test-only admins below.
+    appRole: 'Admin',
     active: true,
   },
   {
@@ -176,6 +177,32 @@ export const employees: Employee[] = [
     hireDate: '2025-02-17',
     annualPtoAllowance: 10,
     appRole: 'Employee',
+    active: true,
+  },
+  // Test-only Admin accounts, added at Eduardo's request for testing —
+  // not part of the source spreadsheet.
+  {
+    id: 'emp-15',
+    sheetNo: 15,
+    name: 'J. Welsford',
+    email: 'jwelsford@fswelsford.com',
+    jobTitle: 'Administrator',
+    department: 'Management',
+    hireDate: '2023-01-01',
+    annualPtoAllowance: 10,
+    appRole: 'Admin',
+    active: true,
+  },
+  {
+    id: 'emp-16',
+    sheetNo: 16,
+    name: 'Gilbert',
+    email: 'gilbert@valveman.com',
+    jobTitle: 'Administrator',
+    department: 'Management',
+    hireDate: '2023-01-01',
+    annualPtoAllowance: 10,
+    appRole: 'Admin',
     active: true,
   },
 ];
