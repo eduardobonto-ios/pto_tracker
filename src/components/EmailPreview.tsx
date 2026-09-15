@@ -1,25 +1,28 @@
 import { Link } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
-import { PTO_NOTIFICATION_RECIPIENTS } from '@/lib/theme';
+import { buildNewRequestNotification } from '@/lib/notifications';
 import { formatDateRange, formatDays } from '@/lib/utils';
 import type { PTORequest } from '@/types';
 
 /**
  * Rendering of the "new request" notification — also what's actually sent
  * when EmailJS is configured (see `lib/notifications.ts`); otherwise this is
- * preview-only.
+ * preview-only. To/Cc reflect the real department-manager routing, not a
+ * hardcoded list.
  */
 export function EmailPreview({ request }: { request: PTORequest }) {
   const { employees } = useApp();
   const employee = employees.find((e) => e.id === request.employeeId);
+  const notification = buildNewRequestNotification(request, employees);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slateish-200/80 bg-white shadow-card">
       {/* Envelope metadata */}
       <div className="space-y-1 border-b border-slateish-200/70 bg-slateish-50/70 px-5 py-3 text-[12.5px] sm:px-6">
-        <MetaRow label="To">
-          {PTO_NOTIFICATION_RECIPIENTS.join(', ')}
-        </MetaRow>
+        <MetaRow label="To">{notification.to.join(', ') || '—'}</MetaRow>
+        {notification.cc.length > 0 && (
+          <MetaRow label="Cc">{notification.cc.join(', ')}</MetaRow>
+        )}
         <MetaRow label="From">Valveman PTO Tracker &lt;no-reply@valveman.com&gt;</MetaRow>
         <MetaRow label="Subject">
           <span className="font-semibold text-navy-900">

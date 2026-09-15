@@ -6,6 +6,8 @@
  * a Valveman hex inside a component; import from here instead.
  */
 
+import type { Department } from '@/types';
+
 export const colors = {
   navy: {
     50: '#F3F6FB',
@@ -97,11 +99,28 @@ export const PTO_NEW_HIRE_COHORT_START_YEAR = 2026;
 export const PTO_LEGACY_CREDIT_MONTH = 5;
 export const PTO_LEGACY_CREDIT_DAY = 1;
 
-/** Recipients wired up in the backend phase (see EmailPreview). */
-export const PTO_NOTIFICATION_RECIPIENTS = [
-  'princes@valveman.com',
-  'pgomez@fswelsford.com',
-] as const;
-
 /** Team manager who gets management-level access even outside the Admin role. */
 export const PRINCES_EMAIL = 'princes@valveman.com';
+
+/** Will Welsford — part of the default approver pair (see `JOB_TITLE_MANAGER_EMAIL` / notifications.ts). */
+export const WILL_EMAIL = 'jwelsford@fswelsford.com';
+
+/**
+ * Manager Approval Workflow (see `lib/notifications.ts` for the full
+ * resolution order and CC handling).
+ *
+ * Primary approver ("To") for a new leave request, most specific rule wins:
+ *   1. `JOB_TITLE_MANAGER_EMAIL[jobTitle]` — e.g. Territory Manager -> Gil.
+ *   2. `DEPARTMENT_MANAGER_EMAIL[department]` — e.g. Administration -> April.
+ *   3. Default (for now): Will and Princes, together.
+ * Princes is cc'd whenever she isn't already one of the "To" approvers —
+ * she is only ever a primary approver via the default-pair rule above.
+ */
+export const DEPARTMENT_MANAGER_EMAIL: Partial<Record<Department, string>> = {
+  Administration: 'april@valveman.com',
+};
+
+/** Job-title-specific approver overrides — checked before `DEPARTMENT_MANAGER_EMAIL`. */
+export const JOB_TITLE_MANAGER_EMAIL: Partial<Record<string, string>> = {
+  'Territory Manager': 'gilbert@valveman.com',
+};

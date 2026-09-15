@@ -18,13 +18,13 @@
  *   1. Create a free account, add an Email Service (connect Gmail/Workspace
  *      via OAuth) — this is the one-time step that replaces SMTP entirely.
  *   2. Create two templates and set each one's "To Email" field to
- *      {{to_email}}:
+ *      {{to_email}}, and its "Cc" field to {{cc_email}}:
  *        - "New request" template — merge fields available: employeeName,
  *          department, leaveType, startDate, endDate, days, reason,
- *          requestId, requestUrl, to_email
+ *          requestId, requestUrl, to_email, cc_email
  *        - "Request reviewed" template — merge fields available: dates,
  *          leaveType, status, adminName, adminComment, requestId,
- *          requestUrl, to_email
+ *          requestUrl, to_email, cc_email
  *   3. Copy the Service ID, both Template IDs, and the Public Key into
  *      `.env` under the names above, then restart `npm run dev`.
  *
@@ -32,9 +32,30 @@
  * payload is only logged to the console and shown on the Email Notification
  * Preview page. EmailJS's free tier has a monthly send-volume cap — check
  * current limits on their pricing page before relying on it for real use.
+ *
+ * MANAGER APPROVAL WORKFLOW — who receives the "new request" notification.
+ * Primary approver(s) ("To"), most specific rule wins:
+ *   1. `JOB_TITLE_MANAGER_EMAIL[jobTitle]` (`lib/theme.ts`) — e.g. Territory
+ *      Manager -> Gil.
+ *   2. `DEPARTMENT_MANAGER_EMAIL[department]` — e.g. Administration -> April.
+ *   3. Default, for now: Will and Princes together.
+ * Princes is cc'd ("Cc") whenever she isn't already a "To" approver — she's
+ * a primary approver only via the default pair in (3), never otherwise.
+ *
+ * APPROVE/REJECT DIRECTLY FROM THE EMAIL — investigated, not implemented:
+ * doing this securely (a manager clicking Approve/Reject with no app login)
+ * requires a single-use, expiring, signed action token minted and verified
+ * server-side, plus a durable store to record it as used — otherwise a
+ * forwarded email, a shared inbox, or an email client's automatic link
+ * pre-fetching/security-scanning could silently approve/reject a request.
+ * That needs a real backend (e.g. a Supabase Edge Function once the planned
+ * Supabase migration happens) and doesn't fit this frontend-only prototype.
+ * The `requestUrl` field below deep-links into the app instead, where the
+ * approve/reject action already records who acted and when
+ * (`reviewedBy`/`reviewedAt` — see `context/AppContext.tsx`).
  */
 
-import { PTO_NOTIFICATION_RECIPIENTS } from './theme';
+import { DEPARTMENT_MANAGER_EMAIL, JOB_TITLE_MANAGER_EMAIL, PRINCES_EMAIL, WILL_EMAIL } from './theme';
 import { formatDateRange, formatDays, uid } from './utils';
 import type { Employee, PTORequest } from '@/types';
 
@@ -45,6 +66,7 @@ export interface NotificationPayload {
   kind: NotificationKind;
   requestId: string;
   to: string[];
+  cc: string[];
   subject: string;
   sentAt: string;
   /** Display-ready fields for the email templates / EmailPreview pages. */
@@ -64,23 +86,46 @@ export function isLiveEmailConfigured(): boolean {
   return Boolean(EMAILJS_SERVICE_ID && EMAILJS_PUBLIC_KEY);
 }
 
-/** Admins in the roster, plus the standing management addresses, deduped. */
-function adminRecipients(employees: Employee[]): string[] {
-  const admins = employees.filter((e) => e.appRole === 'Admin').map((e) => e.email);
-  return Array.from(new Set([...admins, ...PTO_NOTIFICATION_RECIPIENTS]));
+/**
+ * Primary approver(s) ("To") for a new request — see the resolution order
+ * documented in the file header. Whichever tier matches, the filer
+ * themself is excluded (nobody approves their own leave); if that leaves
+ * the list empty, falls back to every other Admin, and finally to Princes
+ * alone, so a request is never left with no recipient at all.
+ */
+function newRequestApprovers(employee: Employee | undefined, employees: Employee[]): string[] {
+  const isSelf = (email: string) => email.toLowerCase() === employee?.email.toLowerCase();
+
+  const jobTitleManager = employee ? JOB_TITLE_MANAGER_EMAIL[employee.jobTitle] : undefined;
+  const departmentManager = employee ? DEPARTMENT_MANAGER_EMAIL[employee.department] : undefined;
+  const candidates =
+    jobTitleManager ? [jobTitleManager]
+    : departmentManager ? [departmentManager]
+    : [WILL_EMAIL, PRINCES_EMAIL];
+
+  const filtered = candidates.filter((email) => !isSelf(email));
+  if (filtered.length > 0) return filtered;
+
+  const fallback = employees
+    .filter((e) => e.appRole === 'Admin' && e.id !== employee?.id)
+    .map((e) => e.email);
+  return fallback.length > 0 ? fallback : [PRINCES_EMAIL];
 }
 
-/** Sent to the appropriate admin/approver when an employee files a new request. */
+/** Sent to the appropriate manager(s) when an employee files a new request. */
 export function buildNewRequestNotification(
   request: PTORequest,
   employees: Employee[],
 ): NotificationPayload {
   const employee = employees.find((e) => e.id === request.employeeId);
+  const to = newRequestApprovers(employee, employees);
   return {
     id: uid('ntf'),
     kind: 'new-request',
     requestId: request.id,
-    to: adminRecipients(employees),
+    to,
+    // Princes is cc'd unless she's already a primary approver above.
+    cc: to.some((email) => email.toLowerCase() === PRINCES_EMAIL) ? [] : [PRINCES_EMAIL],
     subject: `New leave request pending review — ${employee?.name ?? 'Unknown'} (${request.id})`,
     sentAt: new Date().toISOString(),
     data: {
@@ -97,7 +142,7 @@ export function buildNewRequestNotification(
   };
 }
 
-/** Sent to the employee once an admin approves or rejects their request. */
+/** Sent to the employee once their manager/approver approves or rejects their request. */
 export function buildReviewedNotification(
   request: PTORequest,
   employees: Employee[],
@@ -111,6 +156,7 @@ export function buildReviewedNotification(
     kind: 'request-reviewed',
     requestId: request.id,
     to: employee ? [employee.email] : [],
+    cc: [],
     subject: `Your PTO request was ${request.status.toLowerCase()} — ${request.id}`,
     sentAt: new Date().toISOString(),
     data: {
@@ -140,6 +186,7 @@ async function sendViaEmailJs(payload: NotificationPayload): Promise<boolean> {
       template_params: {
         ...payload.data,
         to_email: payload.to.join(','),
+        cc_email: payload.cc.join(','),
         subject: payload.subject,
       },
     }),

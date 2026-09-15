@@ -8,7 +8,6 @@ import { SectionTitle } from '@/components/ui/Misc';
 import { Select } from '@/components/ui/Field';
 import { useApp } from '@/context/AppContext';
 import { isLiveEmailConfigured } from '@/lib/notifications';
-import { PTO_NOTIFICATION_RECIPIENTS } from '@/lib/theme';
 import { formatDate } from '@/lib/utils';
 
 export function EmailPreviewPage() {
@@ -45,9 +44,9 @@ export function EmailPreviewPage() {
             <CheckCircle2 size={15} className="shrink-0 text-success-600" />
             <p className="text-[12.5px] leading-snug text-success-700">
               Live sending is configured via EmailJS — this preview also reflects what was
-              actually emailed. The new-request notice goes to every Admin (
-              {PTO_NOTIFICATION_RECIPIENTS.join(' and ')} today), and the approved/rejected
-              notice goes straight to the employee.
+              actually emailed. The new-request notice goes to the employee's job-title or
+              department manager, or Will &amp; Princes by default (cc Princes otherwise),
+              and the approved/rejected notice goes straight to the employee.
             </p>
           </div>
         ) : (
@@ -57,8 +56,10 @@ export function EmailPreviewPage() {
               Preview only — no email is sent yet. See the browser console for the simulated
               send log, or configure EmailJS (`lib/notifications.ts` / `.env.example`) for
               real delivery with no backend or SMTP. Once enabled, the new-request notice
-              below goes to every Admin ({PTO_NOTIFICATION_RECIPIENTS.join(' and ')} today),
-              and the approved/rejected notice goes straight to the employee.
+              below goes to the employee's job-title or department manager (see
+              `JOB_TITLE_MANAGER_EMAIL` / `DEPARTMENT_MANAGER_EMAIL` in `lib/theme.ts`), or to
+              Will &amp; Princes by default — Princes is cc'd whenever she isn't already a
+              primary approver. The approved/rejected notice goes straight to the employee.
             </p>
           </div>
         )}
