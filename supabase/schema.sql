@@ -88,7 +88,10 @@ create table pto_accounts (
   hire_date date not null,
   annual_pto_allowance numeric not null default 5,
   status pto_account_status not null default 'Active',
-  created_at timestamptz not null default now(),
+  -- Just a provisioning date (matches UserAccount.createdAt in src/types),
+  -- not a precise instant — `date`, not `timestamptz`, so PostgREST returns
+  -- a plain YYYY-MM-DD the frontend's date parsing already expects.
+  created_at date not null default current_date,
   must_change_password boolean not null default true
 );
 

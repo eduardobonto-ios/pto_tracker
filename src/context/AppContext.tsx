@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { pushApprovedLeaveToGoogleCalendar } from '@/lib/calendarSync';
+import { removeLeaveFromCalendar, syncApprovedLeaveToCalendar } from '@/lib/calendarSync';
 import {
   buildNewRequestNotification,
   buildReviewedNotification,
@@ -279,8 +279,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
         setNotifications((prev) => [notification, ...prev]);
         logNotification(notification);
-        // TODO(Google Calendar integration): no-op today — see lib/calendarSync.ts.
-        void pushApprovedLeaveToGoogleCalendar(updated);
+        syncApprovedLeaveToCalendar(updated);
       })().catch((err) => console.error('[PTO Tracker] failed to approve request:', err));
     },
     [currentUser?.name, employees],
@@ -308,6 +307,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const updated = await cancelRequestRpc(id, currentUser.name, reason);
         if (!updated) return;
         setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
+        // No-op on the calendar side if this request was never approved (never had an event).
+        removeLeaveFromCalendar(updated);
       })().catch((err) => console.error('[PTO Tracker] failed to cancel request:', err));
     },
     [currentUser?.name],

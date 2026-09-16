@@ -23,7 +23,7 @@ insert into pto_employees (id, sheet_no, name, email, job_title, department, hir
 ('emp-12', 12, 'Josh Kirk', 'josh@valveman.com', 'Territory Manager', 'Sales', '2025-02-17', 10, 'Employee', true),
 ('emp-13', 13, 'Dylan Lavern', 'dylan@valveman.com', 'Territory Manager', 'Sales', '2025-06-15', 10, 'Employee', true),
 ('emp-14', 14, 'Amr Shweiky', 'amr@valveman.com', 'Territory Manager', 'Sales', '2025-02-17', 10, 'Employee', true),
-('emp-15', 15, 'Will Welsford', 'jwelsford@fswelsford.com', 'Administrator', 'Management', '2023-01-01', 10, 'Admin', true),
+('emp-15', 15, 'Will Welsford', 'wberget@fswelsford.com', 'Administrator', 'Management', '2023-01-01', 10, 'Admin', true),
 ('emp-16', 16, 'Gilbert', 'gilbert@valveman.com', 'Administrator', 'Management', '2023-01-01', 10, 'Admin', true);
 
 -- ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ insert into pto_accounts (id, employee_id, email, full_name, app_role, job_title
 ('acct-12', 'emp-12', 'josh@valveman.com', 'Josh Kirk', 'Employee', 'Territory Manager', 'Sales', '2025-02-17', 10, 'Active', '2026-08-20', false),
 ('acct-13', 'emp-13', 'dylan@valveman.com', 'Dylan Lavern', 'Employee', 'Territory Manager', 'Sales', '2025-06-15', 10, 'Active', '2026-08-20', false),
 ('acct-14', 'emp-14', 'amr@valveman.com', 'Amr Shweiky', 'Employee', 'Territory Manager', 'Sales', '2025-02-17', 10, 'Active', '2026-08-27', true),
-('acct-15', 'emp-15', 'jwelsford@fswelsford.com', 'Will Welsford', 'Admin', 'Administrator', 'Management', '2023-01-01', 10, 'Active', '2026-08-13', false),
+('acct-15', 'emp-15', 'wberget@fswelsford.com', 'Will Welsford', 'Admin', 'Administrator', 'Management', '2023-01-01', 10, 'Active', '2026-08-13', false),
 ('acct-16', 'emp-16', 'gilbert@valveman.com', 'Gilbert', 'Admin', 'Administrator', 'Management', '2023-01-01', 10, 'Active', '2026-08-13', false);
 
 -- ---------------------------------------------------------------------------
@@ -151,5 +151,5 @@ insert into pto_approver_routing (match_type, match_value, approver_email) value
 -- ---------------------------------------------------------------------------
 
 insert into pto_settings (key, value) values
-('default_approver_1', 'jwelsford@fswelsford.com'), -- Will Welsford
+('default_approver_1', 'wberget@fswelsford.com'), -- Will Welsford
 ('default_approver_2', 'princes@valveman.com');      -- Princes Aloha Gomez

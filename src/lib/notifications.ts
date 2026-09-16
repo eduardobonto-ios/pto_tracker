@@ -20,8 +20,9 @@
  *   2. Create two templates and set each one's "To Email" field to
  *      {{to_email}}, and its "Cc" field to {{cc_email}}:
  *        - "New request" template — merge fields available: employeeName,
- *          department, leaveType, startDate, endDate, days, reason,
- *          requestId, requestUrl, approveUrl, rejectUrl, to_email, cc_email.
+ *          employeeEmail, department, leaveType, startDate, endDate, days,
+ *          reason, requestId, requestUrl, approveUrl, rejectUrl, to_email,
+ *          cc_email.
  *          Add two buttons/links using approveUrl/rejectUrl so the
  *          approver can act without opening the app — see the "APPROVE/
  *          REJECT DIRECTLY FROM THE EMAIL" note below.
@@ -148,6 +149,7 @@ export function buildNewRequestNotification(
     sentAt: new Date().toISOString(),
     data: {
       employeeName: employee?.name ?? '—',
+      employeeEmail: employee?.email ?? '',
       department: employee?.department ?? '—',
       leaveType: request.leaveType,
       startDate: request.startDate,

@@ -1,44 +1,47 @@
 /**
- * Google Calendar sync — not implemented yet.
+ * PTO -> Microsoft 365 calendar sync, via a Supabase Edge Function
+ * (`supabase/functions/sync-pto-calendar`) that calls Microsoft Graph.
  *
- * The in-app PTO Calendar (`pages/PTOCalendar.tsx` / `components/Calendar.tsx`)
- * is fully self-contained and does not depend on this module or on Google in
- * any way. This file only defines the seam so a future phase can additionally
- * push approved PTO into the FSW Google Calendar without touching the
- * calendar UI.
+ * This can't run in the browser: it needs the Graph app's client secret,
+ * which must never reach the frontend bundle (same reason the Supabase
+ * service-role key never does). The Edge Function looks the request up
+ * itself, using its own service-role Supabase client, and talks to Graph
+ * directly — this file just fires the invoke and doesn't wait for or depend
+ * on the result, exactly like `lib/notifications.ts`'s email sending.
  *
- * TODO(Google Calendar integration — future phase, needs FSW Google access):
- *   - Provision OAuth/service-account credentials for the FSW Google
- *     Workspace and store them server-side only — e.g.
- *     GOOGLE_CALENDAR_CLIENT_ID / GOOGLE_CALENDAR_CLIENT_SECRET or a service
- *     account key, plus GOOGLE_CALENDAR_ID for the target calendar. Never
- *     hardcode these, and never ship them in the frontend bundle.
- *   - Implement `pushApprovedLeaveToGoogleCalendar` below to call the Google
- *     Calendar API (events.insert / events.patch / events.delete) from a
- *     backend endpoint — this must not run in the browser, since that would
- *     expose credentials.
- *   - Call it from `AppContext` alongside `approveRequest` (create/update the
- *     event) and `cancelRequest`/`rejectRequest` (remove it), the same way
- *     `lib/notifications.ts` is wired in today.
+ * Setup needed before this does anything (see the Edge Function's header
+ * comment for the exact Azure steps):
+ *   - An Azure AD (Entra) app registration in the fswelsford.com tenant with
+ *     the Calendars.ReadWrite *application* permission, admin-consented.
+ *   - An Exchange Online Application Access Policy scoping that app to only
+ *     the one shared PTO calendar mailbox — otherwise the app can read/
+ *     write every mailbox in the tenant.
+ *   - Four secrets set on the Supabase project: MS_GRAPH_TENANT_ID,
+ *     MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_CALENDAR_USER.
+ * Until those exist, the calls below simply fail (logged to the console,
+ * never surfaced to the user) — the PTO Tracker does not require this to
+ * function, same as email notifications degrade to preview-only.
  */
 
+import { supabase } from './supabaseClient';
 import type { PTORequest } from '@/types';
 
-export interface CalendarSyncTarget {
-  /** Not implemented — reserved for the future FSW Google Calendar ID. */
-  calendarId?: string;
+async function invokeSync(requestId: string, action: 'upsert' | 'delete') {
+  const { error } = await supabase.functions.invoke('sync-pto-calendar', {
+    body: { requestId, action },
+  });
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error(`[PTO Tracker] calendar sync (${action}) failed for ${requestId}:`, error);
+  }
 }
 
-/**
- * Placeholder for the future push-to-Google-Calendar call. Intentionally a
- * no-op today — no credentials are configured, and the PTO Tracker does not
- * require this to function.
- */
-export async function pushApprovedLeaveToGoogleCalendar(
-  _request: PTORequest,
-  _target?: CalendarSyncTarget,
-): Promise<void> {
-  // TODO(Google Calendar integration): implement once FSW Google Workspace
-  // access and credentials are available. See the file header for the
-  // configuration this will need.
+/** Call after a request is approved — creates or updates its calendar event. */
+export function syncApprovedLeaveToCalendar(request: PTORequest): void {
+  void invokeSync(request.id, 'upsert');
+}
+
+/** Call after an approved request is cancelled — removes its calendar event, if any existed. */
+export function removeLeaveFromCalendar(request: PTORequest): void {
+  void invokeSync(request.id, 'delete');
 }
