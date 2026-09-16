@@ -110,7 +110,7 @@ export function useLeaveRequestForm({
     if (validate()) setReviewOpen(true);
   }
 
-  function confirmSubmit() {
+  async function confirmSubmit() {
     const input: NewRequestInput = {
       employeeId: form.employeeId,
       leaveType: form.leaveType as LeaveType,
@@ -126,7 +126,7 @@ export function useLeaveRequestForm({
       payStatus,
       status: isAdmin ? form.status : 'Pending',
     };
-    const created = submitRequest(input);
+    const created = await submitRequest(input);
     setReviewOpen(false);
     setConfirmedId(created.id);
     reset();

@@ -21,7 +21,10 @@
  *      {{to_email}}, and its "Cc" field to {{cc_email}}:
  *        - "New request" template — merge fields available: employeeName,
  *          department, leaveType, startDate, endDate, days, reason,
- *          requestId, requestUrl, to_email, cc_email
+ *          requestId, requestUrl, approveUrl, rejectUrl, to_email, cc_email.
+ *          Add two buttons/links using approveUrl/rejectUrl so the
+ *          approver can act without opening the app — see the "APPROVE/
+ *          REJECT DIRECTLY FROM THE EMAIL" note below.
  *        - "Request reviewed" template — merge fields available: dates,
  *          leaveType, status, adminName, adminComment, requestId,
  *          requestUrl, to_email, cc_email
@@ -35,28 +38,30 @@
  *
  * MANAGER APPROVAL WORKFLOW — who receives the "new request" notification.
  * Primary approver(s) ("To"), most specific rule wins:
- *   1. `JOB_TITLE_MANAGER_EMAIL[jobTitle]` (`lib/theme.ts`) — e.g. Territory
- *      Manager -> Gil.
- *   2. `DEPARTMENT_MANAGER_EMAIL[department]` — e.g. Administration -> April.
- *   3. Default, for now: Will and Princes together.
+ *   1. `routing.jobTitleManagerEmail[jobTitle]` — e.g. Territory Manager ->
+ *      Gil. Sourced from the `pto_approver_routing` Supabase table.
+ *   2. `routing.departmentManagerEmail[department]` — e.g. Administration ->
+ *      April. Same table.
+ *   3. Default, for now: `routing.willEmail` and `routing.princesEmail`
+ *      together, sourced from the `pto_settings` table.
  * Princes is cc'd ("Cc") whenever she isn't already a "To" approver — she's
  * a primary approver only via the default pair in (3), never otherwise.
+ * See `lib/supabaseMappers.ts#loadApproverRouting`, loaded once at startup
+ * by `AppContext` and passed into the builders below.
  *
- * APPROVE/REJECT DIRECTLY FROM THE EMAIL — investigated, not implemented:
- * doing this securely (a manager clicking Approve/Reject with no app login)
- * requires a single-use, expiring, signed action token minted and verified
- * server-side, plus a durable store to record it as used — otherwise a
- * forwarded email, a shared inbox, or an email client's automatic link
- * pre-fetching/security-scanning could silently approve/reject a request.
- * That needs a real backend (e.g. a Supabase Edge Function once the planned
- * Supabase migration happens) and doesn't fit this frontend-only prototype.
- * The `requestUrl` field below deep-links into the app instead, where the
- * approve/reject action already records who acted and when
- * (`reviewedBy`/`reviewedAt` — see `context/AppContext.tsx`).
+ * APPROVE/REJECT DIRECTLY FROM THE EMAIL — now implemented. `AppContext`
+ * mints a single-use, expiring, signed action token per action (via the
+ * `pto_mint_action_token` Supabase RPC — only the SHA-256 hash is ever
+ * stored) and injects `approveUrl`/`rejectUrl` into this payload's `data`
+ * before sending. Clicking either link opens the public `/respond` route
+ * (`pages/EmailAction.tsx`), which resolves and then consumes the token via
+ * `pto_resolve_action_token` / `pto_consume_action_token` — no app login
+ * required. `requestUrl` still deep-links into the authenticated app as a
+ * fallback (e.g. after the token has expired or already been used).
  */
 
-import { DEPARTMENT_MANAGER_EMAIL, JOB_TITLE_MANAGER_EMAIL, PRINCES_EMAIL, WILL_EMAIL } from './theme';
 import { formatDateRange, formatDays, uid } from './utils';
+import type { ApproverRouting } from './supabaseMappers';
 import type { Employee, PTORequest } from '@/types';
 
 export type NotificationKind = 'new-request' | 'request-reviewed';
@@ -93,15 +98,19 @@ export function isLiveEmailConfigured(): boolean {
  * the list empty, falls back to every other Admin, and finally to Princes
  * alone, so a request is never left with no recipient at all.
  */
-function newRequestApprovers(employee: Employee | undefined, employees: Employee[]): string[] {
+function newRequestApprovers(
+  employee: Employee | undefined,
+  employees: Employee[],
+  routing: ApproverRouting,
+): string[] {
   const isSelf = (email: string) => email.toLowerCase() === employee?.email.toLowerCase();
 
-  const jobTitleManager = employee ? JOB_TITLE_MANAGER_EMAIL[employee.jobTitle] : undefined;
-  const departmentManager = employee ? DEPARTMENT_MANAGER_EMAIL[employee.department] : undefined;
+  const jobTitleManager = employee ? routing.jobTitleManagerEmail[employee.jobTitle] : undefined;
+  const departmentManager = employee ? routing.departmentManagerEmail[employee.department] : undefined;
   const candidates =
     jobTitleManager ? [jobTitleManager]
     : departmentManager ? [departmentManager]
-    : [WILL_EMAIL, PRINCES_EMAIL];
+    : [routing.willEmail, routing.princesEmail];
 
   const filtered = candidates.filter((email) => !isSelf(email));
   if (filtered.length > 0) return filtered;
@@ -109,23 +118,32 @@ function newRequestApprovers(employee: Employee | undefined, employees: Employee
   const fallback = employees
     .filter((e) => e.appRole === 'Admin' && e.id !== employee?.id)
     .map((e) => e.email);
-  return fallback.length > 0 ? fallback : [PRINCES_EMAIL];
+  return fallback.length > 0 ? fallback : [routing.princesEmail];
 }
 
-/** Sent to the appropriate manager(s) when an employee files a new request. */
+/**
+ * Sent to the appropriate manager(s) when an employee files a new request.
+ * Pure/synchronous — does not mint action tokens. `AppContext.submitRequest`
+ * mints `approveUrl`/`rejectUrl` separately and adds them to `data` before
+ * sending, so this can also be called repeatedly for the Email Notification
+ * Preview page without spending real tokens.
+ */
 export function buildNewRequestNotification(
   request: PTORequest,
   employees: Employee[],
+  routing: ApproverRouting,
 ): NotificationPayload {
   const employee = employees.find((e) => e.id === request.employeeId);
-  const to = newRequestApprovers(employee, employees);
+  const to = newRequestApprovers(employee, employees, routing);
   return {
     id: uid('ntf'),
     kind: 'new-request',
     requestId: request.id,
     to,
     // Princes is cc'd unless she's already a primary approver above.
-    cc: to.some((email) => email.toLowerCase() === PRINCES_EMAIL) ? [] : [PRINCES_EMAIL],
+    cc: to.some((email) => email.toLowerCase() === routing.princesEmail.toLowerCase())
+      ? []
+      : [routing.princesEmail],
     subject: `New leave request pending review — ${employee?.name ?? 'Unknown'} (${request.id})`,
     sentAt: new Date().toISOString(),
     data: {

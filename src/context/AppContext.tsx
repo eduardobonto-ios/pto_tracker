@@ -2,11 +2,11 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import { employees as seedEmployees, ptoRequests as seedRequests, userAccounts as seedAccounts } from '@/data';
 import { pushApprovedLeaveToGoogleCalendar } from '@/lib/calendarSync';
 import {
   buildNewRequestNotification,
@@ -15,7 +15,22 @@ import {
   type NotificationPayload,
 } from '@/lib/notifications';
 import { computeBalances, computeSummary } from '@/lib/pto';
-import { PRINCES_EMAIL } from '@/lib/theme';
+import { supabase } from '@/lib/supabaseClient';
+import {
+  loadApproverRouting,
+  mapAccountRow,
+  mapEmployeeRow,
+  mapRequestRow,
+  type ApproverRouting,
+} from '@/lib/supabaseMappers';
+import {
+  approveRequestRpc,
+  cancelRequestRpc,
+  logNotification,
+  mintActionToken,
+  rejectRequestRpc,
+  submitRequestRpc,
+} from '@/lib/supabaseActions';
 import { todayISO, uid } from '@/lib/utils';
 import type {
   AppRole,
@@ -25,11 +40,13 @@ import type {
 } from '@/types';
 
 /**
- * Single in-memory store for the prototype.
+ * Single data store for the app, backed by Supabase (see `supabase/schema.sql`
+ * and `supabase/seed.sql`). Employees/accounts/requests/routing are fetched
+ * once on mount; every mutator below calls the matching Supabase RPC/table
+ * write and then updates local state from the response.
  *
- * PHASE 2 NOTE: every mutator below is a pure local-state update. When Supabase
- * is wired up, replace the bodies with the corresponding queries/RPCs and keep
- * the signatures — no component changes should be required.
+ * Auth is still mocked (see `signIn`) — there is no password column
+ * anywhere and no real Supabase Auth session yet.
  */
 
 type Session = 'signed-out' | 'must-change-password' | 'signed-in';
@@ -74,12 +91,14 @@ interface AppContextValue {
   employees: Employee[];
   requests: PTORequest[];
   accounts: UserAccount[];
+  /** Approver routing config — see `lib/supabaseMappers.ts#loadApproverRouting`. */
+  routing: ApproverRouting;
   balances: ReturnType<typeof computeBalances>;
   summary: ReturnType<typeof computeSummary>;
 
   /** The last request submitted in this session, used by the email preview. */
   lastSubmittedId: string | null;
-  /** Simulated notification log — see lib/notifications.ts. Newest first. */
+  /** Notification log — see lib/notifications.ts. Newest first. */
   notifications: NotificationPayload[];
 
   signIn: (email: string) => void;
@@ -88,14 +107,14 @@ interface AppContextValue {
   /** Preview-only user switcher so both roles can be demoed. */
   switchUser: (employeeId: string) => void;
 
-  submitRequest: (input: NewRequestInput) => PTORequest;
+  submitRequest: (input: NewRequestInput) => Promise<PTORequest>;
   approveRequest: (id: string, comment?: string) => void;
   rejectRequest: (id: string, rejectionReason: string) => void;
   /** Employee cancelling their own request (or an admin on their behalf). Keeps the record, just changes its status. */
   cancelRequest: (id: string, reason?: string) => void;
 
   createAccount: (input: NewAccountInput) => void;
-  resetPassword: (accountId: string) => string;
+  resetPassword: (accountId: string) => void;
   revokeAccess: (accountId: string) => void;
   restoreAccess: (accountId: string) => void;
   deleteAccount: (accountId: string) => void;
@@ -109,11 +128,51 @@ const DEFAULT_USER_ID = 'emp-01';
 export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session>('signed-out');
   const [currentUserId, setCurrentUserId] = useState(DEFAULT_USER_ID);
-  const [employees, setEmployees] = useState<Employee[]>(seedEmployees);
-  const [requests, setRequests] = useState<PTORequest[]>(seedRequests);
-  const [accounts, setAccounts] = useState<UserAccount[]>(seedAccounts);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [requests, setRequests] = useState<PTORequest[]>([]);
+  const [accounts, setAccounts] = useState<UserAccount[]>([]);
+  const [routing, setRouting] = useState<ApproverRouting | null>(null);
   const [lastSubmittedId, setLastSubmittedId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationPayload[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [employeesRes, accountsRes, requestsRes, routingData] = await Promise.all([
+          supabase.from('pto_employees').select('*').order('sheet_no'),
+          supabase.from('pto_accounts').select('*').order('created_at'),
+          supabase
+            .from('pto_requests')
+            .select('*')
+            .order('request_date', { ascending: false })
+            .order('id', { ascending: false }),
+          loadApproverRouting(),
+        ]);
+        if (employeesRes.error) throw employeesRes.error;
+        if (accountsRes.error) throw accountsRes.error;
+        if (requestsRes.error) throw requestsRes.error;
+        if (cancelled) return;
+
+        setEmployees((employeesRes.data ?? []).map(mapEmployeeRow));
+        setAccounts((accountsRes.data ?? []).map(mapAccountRow));
+        setRequests((requestsRes.data ?? []).map(mapRequestRow));
+        setRouting(routingData);
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : 'Failed to load data from Supabase.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const currentUser = useMemo(
     () => employees.find((e) => e.id === currentUserId) ?? employees[0],
@@ -148,6 +207,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ),
     );
     setSession('signed-in');
+    void supabase
+      .from('pto_accounts')
+      .update({ must_change_password: false })
+      .eq('employee_id', currentUserId)
+      .then(({ error }) => {
+        if (error) console.error('[PTO Tracker] failed to persist first-login completion:', error);
+      });
   }, [currentUserId]);
 
   const switchUser = useCallback((employeeId: string) => {
@@ -155,223 +221,238 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const submitRequest = useCallback(
-    (input: NewRequestInput) => {
+    async (input: NewRequestInput): Promise<PTORequest> => {
       const status = input.status ?? 'Pending';
-      const now = new Date().toISOString();
-      const seq = String(requests.length + 1).padStart(3, '0');
-      const request: PTORequest = {
-        id: `PTO-2026-${seq}`,
+      const request = await submitRequestRpc({
         employeeId: input.employeeId,
-        requestDate: todayISO(),
         leaveType: input.leaveType,
         startDate: input.startDate,
         endDate: input.endDate || input.startDate,
         durationType: input.durationType,
-        startTime: input.startTime,
-        endTime: input.endTime,
-        totalHours: input.totalHours,
         days: input.days,
-        status,
         payStatus: input.payStatus,
         coverage: input.coverage,
         reason: input.reason,
-        notes: `${input.leaveType} — ${input.reason || 'No additional detail provided'}`,
-        timeline: [
-          {
-            id: uid('tl'),
-            label: 'Submitted',
-            at: now,
-            actor: employees.find((e) => e.id === input.employeeId)?.name ?? 'Employee',
-            note: 'Request filed through the PTO Tracker.',
-          },
-        ],
-      };
+        startTime: input.startTime,
+        endTime: input.endTime,
+        totalHours: input.totalHours,
+        status,
+      });
       setRequests((prev) => [request, ...prev]);
       setLastSubmittedId(request.id);
 
-      // Notify the appropriate admin/approver that a new request needs review.
-      // See lib/notifications.ts — nothing is actually emailed in this prototype.
-      const notification = sendNotification(buildNewRequestNotification(request, employees));
-      setNotifications((prev) => [notification, ...prev]);
+      // Notify the appropriate admin/approver that a new request needs review,
+      // including single-use approve/reject links (see lib/supabaseActions.ts).
+      if (routing) {
+        const notification = buildNewRequestNotification(request, employees, routing);
+        const primaryApprover = notification.to[0];
+        if (primaryApprover) {
+          try {
+            const [approveToken, rejectToken] = await Promise.all([
+              mintActionToken(request.id, 'approve', primaryApprover),
+              mintActionToken(request.id, 'reject', primaryApprover),
+            ]);
+            notification.data.approveUrl = `${window.location.origin}/respond?token=${approveToken}`;
+            notification.data.rejectUrl = `${window.location.origin}/respond?token=${rejectToken}`;
+          } catch (err) {
+            console.error('[PTO Tracker] failed to mint email action tokens:', err);
+          }
+        }
+        const sent = sendNotification(notification);
+        setNotifications((prev) => [sent, ...prev]);
+        logNotification(sent);
+      }
 
       return request;
     },
-    [requests.length, employees],
+    [employees, routing],
   );
 
   const approveRequest = useCallback(
     (id: string, comment?: string) => {
-      const now = new Date().toISOString();
-      let updated: PTORequest | undefined;
-      setRequests((prev) =>
-        prev.map((r) => {
-          if (r.id !== id) return r;
-          const next: PTORequest = {
-            ...r,
-            status: 'Approved',
-            reviewedBy: currentUser.name,
-            reviewedAt: now,
-            rejectionReason: undefined,
-            approvalComment: comment?.trim() || undefined,
-            timeline: [
-              ...r.timeline,
-              {
-                id: uid('tl'),
-                label: 'Approved' as const,
-                at: now,
-                actor: currentUser.name,
-                note: comment?.trim() || 'Coverage confirmed and balance checked.',
-              },
-            ],
-          };
-          updated = next;
-          return next;
-        }),
-      );
-      if (updated) {
-        // Notify the employee that their request was approved.
+      void (async () => {
+        const updated = await approveRequestRpc(id, currentUser.name, comment);
+        if (!updated) return;
+        setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         const notification = sendNotification(
           buildReviewedNotification(updated, employees, currentUser.name),
         );
         setNotifications((prev) => [notification, ...prev]);
+        logNotification(notification);
         // TODO(Google Calendar integration): no-op today — see lib/calendarSync.ts.
         void pushApprovedLeaveToGoogleCalendar(updated);
-      }
+      })().catch((err) => console.error('[PTO Tracker] failed to approve request:', err));
     },
-    [currentUser.name, employees],
+    [currentUser?.name, employees],
   );
 
   const rejectRequest = useCallback(
     (id: string, rejectionReason: string) => {
-      const now = new Date().toISOString();
-      let updated: PTORequest | undefined;
-      setRequests((prev) =>
-        prev.map((r) => {
-          if (r.id !== id) return r;
-          const next: PTORequest = {
-            ...r,
-            status: 'Rejected',
-            reviewedBy: currentUser.name,
-            reviewedAt: now,
-            rejectionReason,
-            timeline: [
-              ...r.timeline,
-              {
-                id: uid('tl'),
-                label: 'Rejected' as const,
-                at: now,
-                actor: currentUser.name,
-                note: rejectionReason,
-              },
-            ],
-          };
-          updated = next;
-          return next;
-        }),
-      );
-      if (updated) {
-        // Notify the employee that their request was rejected.
+      void (async () => {
+        const updated = await rejectRequestRpc(id, currentUser.name, rejectionReason);
+        if (!updated) return;
+        setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         const notification = sendNotification(
           buildReviewedNotification(updated, employees, currentUser.name),
         );
         setNotifications((prev) => [notification, ...prev]);
-      }
+        logNotification(notification);
+      })().catch((err) => console.error('[PTO Tracker] failed to reject request:', err));
     },
-    [currentUser.name, employees],
+    [currentUser?.name, employees],
   );
 
   const cancelRequest = useCallback(
     (id: string, reason?: string) => {
-      const now = new Date().toISOString();
-      setRequests((prev) =>
-        prev.map((r) => {
-          if (r.id !== id) return r;
-          // Only an open request (still Pending or already Approved) can be
-          // cancelled — a Rejected or already-Cancelled record is terminal.
-          if (r.status !== 'Pending' && r.status !== 'Approved') return r;
-          return {
-            ...r,
-            status: 'Cancelled',
-            cancelledAt: now,
-            timeline: [
-              ...r.timeline,
-              {
-                id: uid('tl'),
-                label: 'Cancelled' as const,
-                at: now,
-                actor: currentUser.name,
-                note: reason?.trim() || 'Cancelled by the employee.',
-              },
-            ],
-          };
-        }),
-      );
+      void (async () => {
+        const updated = await cancelRequestRpc(id, currentUser.name, reason);
+        if (!updated) return;
+        setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      })().catch((err) => console.error('[PTO Tracker] failed to cancel request:', err));
     },
-    [currentUser.name],
+    [currentUser?.name],
   );
 
-  const createAccount = useCallback((input: NewAccountInput) => {
-    const employeeId = uid('emp');
-    setEmployees((prev) => [
-      ...prev,
-      {
-        id: employeeId,
-        sheetNo: prev.length + 1,
-        name: input.fullName,
-        email: input.email,
-        jobTitle: input.jobTitle || 'Team Member',
-        department: input.department,
-        hireDate: input.hireDate,
-        annualPtoAllowance: input.annualPtoAllowance,
-        appRole: input.appRole,
-        active: true,
-      },
-    ]);
-    setAccounts((prev) => [
-      {
-        id: uid('acct'),
-        email: input.email,
-        fullName: input.fullName,
-        appRole: input.appRole,
-        jobTitle: input.jobTitle || 'Team Member',
-        department: input.department,
-        hireDate: input.hireDate,
-        annualPtoAllowance: input.annualPtoAllowance,
-        status: 'Active',
-        createdAt: todayISO(),
-        mustChangePassword: true,
-        employeeId,
-      },
-      ...prev,
-    ]);
-  }, []);
+  const createAccount = useCallback(
+    (input: NewAccountInput) => {
+      const employeeId = uid('emp');
+      const accountId = uid('acct');
+      void (async () => {
+        const { error: empError } = await supabase.from('pto_employees').insert({
+          id: employeeId,
+          sheet_no: employees.length + 1,
+          name: input.fullName,
+          email: input.email,
+          job_title: input.jobTitle || 'Team Member',
+          department: input.department,
+          hire_date: input.hireDate,
+          annual_pto_allowance: input.annualPtoAllowance,
+          app_role: input.appRole,
+          active: true,
+        });
+        if (empError) throw empError;
+
+        const { error: acctError } = await supabase.from('pto_accounts').insert({
+          id: accountId,
+          employee_id: employeeId,
+          email: input.email,
+          full_name: input.fullName,
+          app_role: input.appRole,
+          job_title: input.jobTitle || 'Team Member',
+          department: input.department,
+          hire_date: input.hireDate,
+          annual_pto_allowance: input.annualPtoAllowance,
+          status: 'Active',
+          must_change_password: true,
+        });
+        if (acctError) throw acctError;
+
+        setEmployees((prev) => [
+          ...prev,
+          {
+            id: employeeId,
+            sheetNo: prev.length + 1,
+            name: input.fullName,
+            email: input.email,
+            jobTitle: input.jobTitle || 'Team Member',
+            department: input.department,
+            hireDate: input.hireDate,
+            annualPtoAllowance: input.annualPtoAllowance,
+            appRole: input.appRole,
+            active: true,
+          },
+        ]);
+        setAccounts((prev) => [
+          {
+            id: accountId,
+            email: input.email,
+            fullName: input.fullName,
+            appRole: input.appRole,
+            jobTitle: input.jobTitle || 'Team Member',
+            department: input.department,
+            hireDate: input.hireDate,
+            annualPtoAllowance: input.annualPtoAllowance,
+            status: 'Active',
+            createdAt: todayISO(),
+            mustChangePassword: true,
+            employeeId,
+          },
+          ...prev,
+        ]);
+      })().catch((err) => console.error('[PTO Tracker] failed to create account:', err));
+    },
+    [employees.length],
+  );
 
   const resetPassword = useCallback((accountId: string) => {
-    // Phase 2: this calls the Supabase admin API and returns the new temp value.
+    // No password is stored anywhere (mocked auth) — this just forces the
+    // employee through the first-login screen again.
     setAccounts((prev) =>
       prev.map((a) => (a.id === accountId ? { ...a, mustChangePassword: true } : a)),
     );
-    return 'reset';
+    void supabase
+      .from('pto_accounts')
+      .update({ must_change_password: true })
+      .eq('id', accountId)
+      .then(({ error }) => {
+        if (error) console.error('[PTO Tracker] failed to persist password reset:', error);
+      });
   }, []);
 
   const revokeAccess = useCallback((accountId: string) => {
     setAccounts((prev) =>
       prev.map((a) => (a.id === accountId ? { ...a, status: 'Revoked' } : a)),
     );
+    void supabase
+      .from('pto_accounts')
+      .update({ status: 'Revoked' })
+      .eq('id', accountId)
+      .then(({ error }) => {
+        if (error) console.error('[PTO Tracker] failed to revoke access:', error);
+      });
   }, []);
 
   const restoreAccess = useCallback((accountId: string) => {
     setAccounts((prev) =>
       prev.map((a) => (a.id === accountId ? { ...a, status: 'Active' } : a)),
     );
+    void supabase
+      .from('pto_accounts')
+      .update({ status: 'Active' })
+      .eq('id', accountId)
+      .then(({ error }) => {
+        if (error) console.error('[PTO Tracker] failed to restore access:', error);
+      });
   }, []);
 
   const deleteAccount = useCallback((accountId: string) => {
     setAccounts((prev) => prev.filter((a) => a.id !== accountId));
+    void supabase
+      .from('pto_accounts')
+      .delete()
+      .eq('id', accountId)
+      .then(({ error }) => {
+        if (error) console.error('[PTO Tracker] failed to delete account:', error);
+      });
   }, []);
 
+  if (loading) {
+    return <FullScreenNotice title="Loading Valveman PTO Tracker…" />;
+  }
+  if (loadError || !currentUser || !routing) {
+    return (
+      <FullScreenNotice
+        title="Couldn't load the PTO Tracker"
+        detail={
+          loadError ??
+          'No data came back from Supabase. Make sure supabase/schema.sql and supabase/seed.sql have been run, and that VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are set in .env.'
+        }
+      />
+    );
+  }
+
   const isAdmin = currentUser.appRole === 'Admin';
-  const isManagement = isAdmin || currentUser.email.toLowerCase() === PRINCES_EMAIL;
+  const isManagement = isAdmin || currentUser.email.toLowerCase() === routing.princesEmail.toLowerCase();
 
   const value: AppContextValue = {
     session,
@@ -382,6 +463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     employees,
     requests,
     accounts,
+    routing,
     balances,
     summary,
     lastSubmittedId,
@@ -402,6 +484,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+function FullScreenNotice({ title, detail }: { title: string; detail?: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-6">
+      <div className="max-w-md text-center">
+        <p className="text-[15px] font-semibold text-navy-900">{title}</p>
+        {detail && <p className="mt-2 text-[13px] leading-relaxed text-slateish-500">{detail}</p>}
+      </div>
+    </div>
+  );
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

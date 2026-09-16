@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
-import { buildNewRequestNotification } from '@/lib/notifications';
+import { buildNewRequestNotification, type NotificationPayload } from '@/lib/notifications';
 import { formatDateRange, formatDays } from '@/lib/utils';
 import type { PTORequest } from '@/types';
 
@@ -9,11 +9,23 @@ import type { PTORequest } from '@/types';
  * when EmailJS is configured (see `lib/notifications.ts`); otherwise this is
  * preview-only. To/Cc reflect the real department-manager routing, not a
  * hardcoded list.
+ *
+ * If `notification` (the actual payload that was sent — see
+ * `AppContext.submitRequest`) is passed in, its real approve/reject links are
+ * shown. Otherwise this rebuilds a payload for display only, which never has
+ * real tokens (minting one on every render of a historical request would
+ * spam the `pto_action_tokens` table), so no action buttons are shown.
  */
-export function EmailPreview({ request }: { request: PTORequest }) {
-  const { employees } = useApp();
+export function EmailPreview({
+  request,
+  notification: notificationProp,
+}: {
+  request: PTORequest;
+  notification?: NotificationPayload;
+}) {
+  const { employees, routing } = useApp();
   const employee = employees.find((e) => e.id === request.employeeId);
-  const notification = buildNewRequestNotification(request, employees);
+  const notification = notificationProp ?? buildNewRequestNotification(request, employees, routing);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slateish-200/80 bg-white shadow-card">
@@ -69,9 +81,31 @@ export function EmailPreview({ request }: { request: PTORequest }) {
               />
             </div>
 
-            <p className="mt-3 text-[13.5px] leading-snug text-slateish-700">
-              Open the PTO Tracker to approve or decline:
-            </p>
+            {notification.data.approveUrl && notification.data.rejectUrl ? (
+              <>
+                <p className="mt-3 text-[13.5px] leading-snug text-slateish-700">
+                  Respond directly from this email, or open the PTO Tracker:
+                </p>
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  <a
+                    href={notification.data.approveUrl}
+                    className="inline-flex h-9 items-center justify-center rounded-xl bg-gradient-to-b from-success-500 to-success-600 px-5 text-[13px] font-semibold text-white shadow-sm transition-all hover:from-success-600 hover:to-success-700"
+                  >
+                    Approve
+                  </a>
+                  <a
+                    href={notification.data.rejectUrl}
+                    className="inline-flex h-9 items-center justify-center rounded-xl border border-danger-200 bg-white px-5 text-[13px] font-semibold text-danger-600 transition-all hover:bg-danger-50"
+                  >
+                    Decline
+                  </a>
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-[13.5px] leading-snug text-slateish-700">
+                Open the PTO Tracker to approve or decline:
+              </p>
+            )}
 
             <Link
               to={`/requests/${request.id}`}

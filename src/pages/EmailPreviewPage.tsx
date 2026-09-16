@@ -11,13 +11,19 @@ import { isLiveEmailConfigured } from '@/lib/notifications';
 import { formatDate } from '@/lib/utils';
 
 export function EmailPreviewPage() {
-  const { requests, employees, lastSubmittedId } = useApp();
+  const { requests, employees, notifications, lastSubmittedId } = useApp();
   const [requestId, setRequestId] = useState(
     lastSubmittedId ?? requests.find((r) => r.status === 'Pending')?.id ?? requests[0]?.id,
   );
 
   const request = requests.find((r) => r.id === requestId) ?? requests[0];
   const empById = new Map(employees.map((e) => [e.id, e]));
+  // The exact payload that was actually sent this session (with real
+  // approve/reject links), if this request was submitted since the app
+  // loaded — otherwise EmailPreview falls back to a token-less rebuild.
+  const sentNotification = request
+    ? notifications.find((n) => n.kind === 'new-request' && n.requestId === request.id)
+    : undefined;
 
   return (
     <AppLayout
@@ -46,7 +52,8 @@ export function EmailPreviewPage() {
               Live sending is configured via EmailJS — this preview also reflects what was
               actually emailed. The new-request notice goes to the employee's job-title or
               department manager, or Will &amp; Princes by default (cc Princes otherwise),
-              and the approved/rejected notice goes straight to the employee.
+              includes one-click Approve/Decline links, and the approved/rejected notice
+              goes straight to the employee.
             </p>
           </div>
         ) : (
@@ -56,10 +63,12 @@ export function EmailPreviewPage() {
               Preview only — no email is sent yet. See the browser console for the simulated
               send log, or configure EmailJS (`lib/notifications.ts` / `.env.example`) for
               real delivery with no backend or SMTP. Once enabled, the new-request notice
-              below goes to the employee's job-title or department manager (see
-              `JOB_TITLE_MANAGER_EMAIL` / `DEPARTMENT_MANAGER_EMAIL` in `lib/theme.ts`), or to
-              Will &amp; Princes by default — Princes is cc'd whenever she isn't already a
-              primary approver. The approved/rejected notice goes straight to the employee.
+              below goes to the employee's job-title or department manager (see the
+              `pto_approver_routing` Supabase table), or to Will &amp; Princes by default —
+              Princes is cc'd whenever she isn't already a primary approver. Approve/Decline
+              links only appear once a request has actually been submitted this session (see
+              Approve/Decline in the card below). The approved/rejected notice goes straight
+              to the employee.
             </p>
           </div>
         )}
@@ -70,7 +79,7 @@ export function EmailPreviewPage() {
               <SectionTitle className="mb-2">
                 New request — sent to the admin/approver
               </SectionTitle>
-              <EmailPreview request={request} />
+              <EmailPreview request={request} notification={sentNotification} />
             </div>
 
             {(request.status === 'Approved' || request.status === 'Rejected') && (
