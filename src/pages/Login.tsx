@@ -6,19 +6,23 @@ import { LogoMark, LogoLockup } from '@/components/layout/Logo';
 import { useApp } from '@/context/AppContext';
 
 export function LoginPage() {
-  const { signIn, employees } = useApp();
-  const [email, setEmail] = useState('princes@valveman.com');
+  const { signIn } = useApp();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setError('Enter your work email and password to continue.');
       return;
     }
     setError('');
-    signIn(email);
+    setSubmitting(true);
+    const message = await signIn(email, password);
+    setSubmitting(false);
+    if (message) setError(message);
   }
 
   return (
@@ -105,9 +109,7 @@ export function LoginPage() {
                   type="button"
                   className="font-semibold text-accent-600 hover:text-accent-500"
                   onClick={() =>
-                    setError(
-                      'Password recovery is not wired up in this prototype — ask an administrator to reset your password.',
-                    )
+                    setError('Ask an administrator to reset your password.')
                   }
                 >
                   Forgot password?
@@ -136,44 +138,10 @@ export function LoginPage() {
               </p>
             )}
 
-            <Button type="submit" block size="lg">
-              Sign In <ArrowRight size={16} />
+            <Button type="submit" block size="lg" disabled={submitting}>
+              {submitting ? 'Signing in…' : 'Sign In'} <ArrowRight size={16} />
             </Button>
           </form>
-
-          {/* Prototype helper — removed once real auth lands. */}
-          <div className="mt-7 rounded-2xl border border-slateish-200 bg-white p-4 shadow-card">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-slateish-400">
-              Prototype access
-            </p>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-slateish-500">
-              Authentication is mocked — any password works. Sign in as an admin with{' '}
-              <button
-                type="button"
-                onClick={() => setEmail('princes@valveman.com')}
-                className="font-semibold text-accent-600 hover:underline"
-              >
-                princes@valveman.com
-              </button>
-              , or as an employee with{' '}
-              <button
-                type="button"
-                onClick={() => setEmail('josh@valveman.com')}
-                className="font-semibold text-accent-600 hover:underline"
-              >
-                josh@valveman.com
-              </button>
-              . Try{' '}
-              <button
-                type="button"
-                onClick={() => setEmail('amr@valveman.com')}
-                className="font-semibold text-accent-600 hover:underline"
-              >
-                amr@valveman.com
-              </button>{' '}
-              to see the forced first-login screen. ({employees.length} accounts seeded.)
-            </p>
-          </div>
 
           <p className="mt-6 text-center text-[11.5px] text-slateish-400">
             Invite-only access. Only an administrator can create an account.

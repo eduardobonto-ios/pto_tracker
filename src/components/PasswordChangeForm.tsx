@@ -16,24 +16,36 @@ const RULES: Rule[] = [
   { label: 'One number', test: (v) => /\d/.test(v) },
 ];
 
-/** Forced first-login password change. Frontend-only — nothing is persisted. */
-export function PasswordChangeForm({ onDone }: { onDone: () => void }) {
+/** Forced first-login password change. */
+export function PasswordChangeForm({
+  onSubmit,
+}: {
+  /** Returns an error message if `current` doesn't match, or null on success. */
+  onSubmit: (current: string, next: string) => Promise<string | null>;
+}) {
   const [temp, setTemp] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [show, setShow] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const passed = useMemo(() => RULES.map((r) => r.test(next)), [next]);
   const strength = passed.filter(Boolean).length;
 
-  function submit() {
+  async function submit() {
     const e: Record<string, string> = {};
     if (!temp) e.temp = 'Enter the temporary password you were given.';
     if (strength < RULES.length) e.next = 'Your new password does not meet all requirements.';
     if (next !== confirm) e.confirm = 'The two passwords do not match.';
-    setErrors(e);
-    if (Object.keys(e).length === 0) onDone();
+    if (Object.keys(e).length > 0) {
+      setErrors(e);
+      return;
+    }
+    setSubmitting(true);
+    const message = await onSubmit(temp, next);
+    setSubmitting(false);
+    if (message) setErrors({ temp: message });
   }
 
   return (
@@ -140,8 +152,8 @@ export function PasswordChangeForm({ onDone }: { onDone: () => void }) {
         </div>
       </Field>
 
-      <Button block size="lg" onClick={submit}>
-        Update Password
+      <Button block size="lg" onClick={submit} disabled={submitting}>
+        {submitting ? 'Updating…' : 'Update Password'}
       </Button>
     </div>
   );

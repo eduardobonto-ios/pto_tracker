@@ -26,10 +26,13 @@ import {
 import {
   approveRequestRpc,
   cancelRequestRpc,
+  changePasswordRpc,
   logNotification,
   mintActionToken,
   rejectRequestRpc,
+  setPasswordRpc,
   submitRequestRpc,
+  verifyLoginRpc,
 } from '@/lib/supabaseActions';
 import { todayISO, uid } from '@/lib/utils';
 import type {
@@ -45,8 +48,10 @@ import type {
  * once on mount; every mutator below calls the matching Supabase RPC/table
  * write and then updates local state from the response.
  *
- * Auth is still mocked (see `signIn`) — there is no password column
- * anywhere and no real Supabase Auth session yet.
+ * Passwords are real (`signIn` verifies against a bcrypt hash via the
+ * `pto_verify_login` RPC — see `supabase/schema.sql`), but there's still no
+ * real Supabase Auth session; `currentUserId` is just a locally-held pointer
+ * set on successful sign-in, not a token.
  */
 
 type Session = 'signed-out' | 'must-change-password' | 'signed-in';
@@ -101,9 +106,11 @@ interface AppContextValue {
   /** Notification log — see lib/notifications.ts. Newest first. */
   notifications: NotificationPayload[];
 
-  signIn: (email: string) => void;
+  /** Returns an error message on failure (wrong email/password), or null on success. */
+  signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => void;
-  completeFirstLogin: () => void;
+  /** Forced first-login password change. Returns an error message if `current` doesn't match, or null on success. */
+  changePassword: (current: string, next: string) => Promise<string | null>;
   /** Preview-only user switcher so both roles can be demoed. */
   switchUser: (employeeId: string) => void;
 
@@ -114,7 +121,8 @@ interface AppContextValue {
   cancelRequest: (id: string, reason?: string) => void;
 
   createAccount: (input: NewAccountInput) => void;
-  resetPassword: (accountId: string) => void;
+  /** Admin-initiated reset — sets the real password directly, no current-password check. */
+  resetPassword: (accountId: string, newPassword: string) => void;
   revokeAccess: (accountId: string) => void;
   restoreAccess: (accountId: string) => void;
   deleteAccount: (accountId: string) => void;
@@ -183,38 +191,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const summary = useMemo(() => computeSummary(employees, requests), [employees, requests]);
 
   const signIn = useCallback(
-    (email: string) => {
-      const match = employees.find(
-        (e) => e.email.toLowerCase() === email.trim().toLowerCase(),
-      );
-      const account = accounts.find(
-        (a) => a.email.toLowerCase() === email.trim().toLowerCase(),
-      );
-      if (match) setCurrentUserId(match.id);
-      // Mock auth: any password is accepted. Accounts that have never completed
-      // the forced change are routed through the first-login screen.
-      setSession(account?.mustChangePassword ? 'must-change-password' : 'signed-in');
+    async (email: string, password: string): Promise<string | null> => {
+      try {
+        const result = await verifyLoginRpc(email, password);
+        if (!result) return 'Incorrect email or password.';
+        setCurrentUserId(result.employeeId);
+        setSession(result.mustChangePassword ? 'must-change-password' : 'signed-in');
+        return null;
+      } catch (err) {
+        console.error('[PTO Tracker] sign-in failed:', err);
+        return 'Something went wrong signing in. Please try again.';
+      }
     },
-    [employees, accounts],
+    [],
   );
 
   const signOut = useCallback(() => setSession('signed-out'), []);
 
-  const completeFirstLogin = useCallback(() => {
-    setAccounts((prev) =>
-      prev.map((a) =>
-        a.employeeId === currentUserId ? { ...a, mustChangePassword: false } : a,
-      ),
-    );
-    setSession('signed-in');
-    void supabase
-      .from('pto_accounts')
-      .update({ must_change_password: false })
-      .eq('employee_id', currentUserId)
-      .then(({ error }) => {
-        if (error) console.error('[PTO Tracker] failed to persist first-login completion:', error);
-      });
-  }, [currentUserId]);
+  const changePassword = useCallback(
+    async (current: string, next: string): Promise<string | null> => {
+      const account = accounts.find((a) => a.employeeId === currentUserId);
+      if (!account) return 'No account found for this session.';
+      try {
+        const ok = await changePasswordRpc(account.id, current, next);
+        if (!ok) return 'Your current password is incorrect.';
+        setAccounts((prev) =>
+          prev.map((a) => (a.id === account.id ? { ...a, mustChangePassword: false } : a)),
+        );
+        setSession('signed-in');
+        return null;
+      } catch (err) {
+        console.error('[PTO Tracker] password change failed:', err);
+        return 'Something went wrong updating your password. Please try again.';
+      }
+    },
+    [accounts, currentUserId],
+  );
 
   const switchUser = useCallback((employeeId: string) => {
     setCurrentUserId(employeeId);
@@ -347,6 +359,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           must_change_password: true,
         });
         if (acctError) throw acctError;
+        await setPasswordRpc(accountId, input.tempPassword, true);
 
         setEmployees((prev) => [
           ...prev,
@@ -385,19 +398,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [employees.length],
   );
 
-  const resetPassword = useCallback((accountId: string) => {
-    // No password is stored anywhere (mocked auth) — this just forces the
-    // employee through the first-login screen again.
+  const resetPassword = useCallback((accountId: string, newPassword: string) => {
     setAccounts((prev) =>
       prev.map((a) => (a.id === accountId ? { ...a, mustChangePassword: true } : a)),
     );
-    void supabase
-      .from('pto_accounts')
-      .update({ must_change_password: true })
-      .eq('id', accountId)
-      .then(({ error }) => {
-        if (error) console.error('[PTO Tracker] failed to persist password reset:', error);
-      });
+    setPasswordRpc(accountId, newPassword, true).catch((err) =>
+      console.error('[PTO Tracker] failed to persist password reset:', err),
+    );
   }, []);
 
   const revokeAccess = useCallback((accountId: string) => {
@@ -471,7 +478,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notifications,
     signIn,
     signOut,
-    completeFirstLogin,
+    changePassword,
     switchUser,
     submitRequest,
     approveRequest,

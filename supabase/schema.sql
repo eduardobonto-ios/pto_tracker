@@ -172,6 +172,16 @@ create table pto_action_tokens (
 );
 create index pto_action_tokens_request_id_idx on pto_action_tokens(request_id);
 
+-- Real login credentials. Deliberately a separate table from pto_accounts,
+-- not a column on it — pto_accounts is wide open to a plain `select('*')`
+-- for anon (see below), and a password hash must never come back on that
+-- read. Only reachable via the SECURITY DEFINER functions below.
+create table pto_credentials (
+  account_id text primary key references pto_accounts(id) on delete cascade,
+  password_hash text not null,
+  updated_at timestamptz not null default now()
+);
+
 -- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
@@ -183,6 +193,7 @@ alter table pto_notifications enable row level security;
 alter table pto_approver_routing enable row level security;
 alter table pto_settings enable row level security;
 alter table pto_action_tokens enable row level security;
+alter table pto_credentials enable row level security;
 
 create policy pto_employees_select on pto_employees for select using (true);
 create policy pto_employees_write on pto_employees for all using (true) with check (true);
@@ -200,13 +211,15 @@ create policy pto_notifications_insert on pto_notifications for insert with chec
 create policy pto_approver_routing_select on pto_approver_routing for select using (true);
 create policy pto_settings_select on pto_settings for select using (true);
 
--- No policies at all on pto_action_tokens — default-deny for every operation
--- and every role. Only reachable via the functions below.
+-- No policies at all on pto_action_tokens or pto_credentials — default-deny
+-- for every operation and every role. Only reachable via the SECURITY
+-- DEFINER functions below, which never return password_hash itself.
 
 grant select, insert, update, delete on pto_employees, pto_accounts to anon, authenticated;
 grant select on pto_requests, pto_approver_routing, pto_settings to anon, authenticated;
 grant select, insert on pto_notifications to anon, authenticated;
 revoke all on pto_action_tokens from anon, authenticated;
+revoke all on pto_credentials from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Request lifecycle functions
@@ -495,6 +508,100 @@ begin
   return query select * from pto_resolve_action_token(p_token);
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Password / credentials functions
+--
+-- Real bcrypt-style hashing via pgcrypto — password_hash never leaves these
+-- functions. `pto_verify_login` returns nothing (empty set) for a wrong
+-- password, an unknown email, a Revoked account, or an account with no
+-- credentials set yet, all identically, so a caller can't distinguish which
+-- case it was (no email-enumeration or account-existence signal).
+--
+-- Caveat, same one already noted for pto_accounts/pto_employees above:
+-- there's no real per-caller identity yet (no Supabase Auth session), so
+-- these functions can't verify "is the caller actually an admin" — anon
+-- already has full write access to pto_accounts directly, so this doesn't
+-- introduce a new privilege-escalation path, just carries the same
+-- pre-existing one forward. Revisit once real auth exists. There's also no
+-- rate limiting on pto_verify_login at this layer.
+-- ---------------------------------------------------------------------------
+
+create or replace function pto_set_password(
+  p_account_id text,
+  p_new_password text,
+  p_force_change boolean default true
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $$
+begin
+  insert into pto_credentials (account_id, password_hash, updated_at)
+  values (p_account_id, crypt(p_new_password, gen_salt('bf')), now())
+  on conflict (account_id) do update
+    set password_hash = excluded.password_hash, updated_at = now();
+
+  update pto_accounts set must_change_password = p_force_change where id = p_account_id;
+end;
+$$;
+
+create or replace function pto_verify_login(p_email text, p_password text)
+returns table(account_id text, employee_id text, must_change_password boolean)
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $$
+declare
+  v_account pto_accounts;
+  v_hash text;
+begin
+  select * into v_account from pto_accounts a
+  where lower(a.email) = lower(trim(p_email)) and a.status = 'Active';
+  if v_account.id is null then
+    return;
+  end if;
+
+  select c.password_hash into v_hash from pto_credentials c where c.account_id = v_account.id;
+  if v_hash is null or crypt(p_password, v_hash) <> v_hash then
+    return;
+  end if;
+
+  return query select v_account.id, v_account.employee_id, v_account.must_change_password;
+end;
+$$;
+
+create or replace function pto_change_password(
+  p_account_id text,
+  p_current_password text,
+  p_new_password text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $$
+declare
+  v_hash text;
+begin
+  select password_hash into v_hash from pto_credentials where account_id = p_account_id;
+  if v_hash is null or crypt(p_current_password, v_hash) <> v_hash then
+    return false;
+  end if;
+
+  update pto_credentials set password_hash = crypt(p_new_password, gen_salt('bf')), updated_at = now()
+  where account_id = p_account_id;
+  update pto_accounts set must_change_password = false where id = p_account_id;
+  return true;
+end;
+$$;
+
+grant execute on function
+  pto_set_password(text, text, boolean),
+  pto_verify_login(text, text),
+  pto_change_password(text, text, text)
+to anon, authenticated;
 
 grant execute on function
   pto_submit_request(text, pto_leave_type, date, date, pto_duration_type, numeric, pto_pay_status, text, text, time, time, numeric, pto_status),

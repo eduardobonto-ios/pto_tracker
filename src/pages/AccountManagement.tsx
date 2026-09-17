@@ -41,7 +41,7 @@ export function AccountManagementPage() {
   }
 
   function confirmReset() {
-    if (resetTarget) resetPassword(resetTarget.id);
+    if (resetTarget) resetPassword(resetTarget.id, newTempPassword);
     setResetTarget(null);
   }
 

@@ -5,7 +5,7 @@ import { useApp } from '@/context/AppContext';
 
 /** Forced first-login password change, shown before the app becomes available. */
 export function FirstLoginPage() {
-  const { currentUser, completeFirstLogin, signOut } = useApp();
+  const { currentUser, changePassword, signOut } = useApp();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-5 py-12">
@@ -35,7 +35,7 @@ export function FirstLoginPage() {
             </div>
           </div>
 
-          <PasswordChangeForm onDone={completeFirstLogin} />
+          <PasswordChangeForm onSubmit={changePassword} />
         </div>
 
         <button

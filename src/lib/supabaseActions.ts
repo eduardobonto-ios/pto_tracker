@@ -149,6 +149,50 @@ export async function consumeActionToken(token: string, reason?: string): Promis
   return mapTokenRow(data[0]);
 }
 
+export interface LoginResult {
+  accountId: string;
+  employeeId: string;
+  mustChangePassword: boolean;
+}
+
+/** Returns null for any invalid combination (wrong password, unknown/Revoked email, no credentials set) — never distinguishes which. */
+export async function verifyLoginRpc(email: string, password: string): Promise<LoginResult | null> {
+  const { data, error } = await supabase.rpc('pto_verify_login', { p_email: email, p_password: password });
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return null;
+  return { accountId: row.account_id, employeeId: row.employee_id, mustChangePassword: row.must_change_password };
+}
+
+/** Admin-initiated (create account / reset password) — sets a password directly, no current-password check. */
+export async function setPasswordRpc(
+  accountId: string,
+  newPassword: string,
+  forceChange = true,
+): Promise<void> {
+  const { error } = await supabase.rpc('pto_set_password', {
+    p_account_id: accountId,
+    p_new_password: newPassword,
+    p_force_change: forceChange,
+  });
+  if (error) throw error;
+}
+
+/** Self-service change (first-login screen) — verifies the current password first. Returns false if it doesn't match. */
+export async function changePasswordRpc(
+  accountId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('pto_change_password', {
+    p_account_id: accountId,
+    p_current_password: currentPassword,
+    p_new_password: newPassword,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
+
 /** Fire-and-forget audit log entry — mirrors what `sendNotification` already sent. */
 export function logNotification(payload: NotificationPayload) {
   void supabase

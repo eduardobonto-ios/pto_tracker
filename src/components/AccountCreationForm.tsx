@@ -33,7 +33,7 @@ export function useAccountCreationForm() {
   const [department, setDepartment] = useState<Department>('Operations');
   const [hireDate, setHireDate] = useState(todayISO());
   const [allowance, setAllowance] = useState('5');
-  const [password, setPassword] = useState(() => generateTempPassword());
+  const [password, setPassword] = useState('1234');
   const [copied, setCopied] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [created, setCreated] = useState<string | null>(null);
@@ -78,7 +78,7 @@ export function useAccountCreationForm() {
     setDepartment('Operations');
     setHireDate(todayISO());
     setAllowance('5');
-    setPassword(generateTempPassword());
+    setPassword('1234');
     setTimeout(() => setCreated(null), 5000);
   }
 
