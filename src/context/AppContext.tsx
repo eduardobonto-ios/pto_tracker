@@ -45,11 +45,15 @@ import type {
  * once on mount; every mutator below calls the matching Supabase RPC/table
  * write and then updates local state from the response.
  *
- * Auth is still mocked (see `signIn`) — there is no password column
- * anywhere and no real Supabase Auth session yet.
+ * Auth is real Supabase Auth (Google for @valveman.com, Microsoft/Azure for
+ * @fswelsford.com) — see `signInWithGoogle`/`signInWithMicrosoft`. Being a
+ * real identity on one of those two domains isn't enough by itself: the
+ * authenticated email must also match an `Active` row in `pto_accounts`
+ * (provisioned via Account Management) before `session` becomes
+ * `'signed-in'` — otherwise it's `'unprovisioned'`.
  */
 
-type Session = 'signed-out' | 'must-change-password' | 'signed-in';
+type Session = 'signed-out' | 'unprovisioned' | 'signed-in';
 
 export interface NewRequestInput {
   employeeId: string;
@@ -76,11 +80,12 @@ export interface NewAccountInput {
   department: UserAccount['department'];
   hireDate: string;
   annualPtoAllowance: number;
-  tempPassword: string;
 }
 
 interface AppContextValue {
   session: Session;
+  /** The email Supabase Auth verified, regardless of provisioning state. Null while signed out. */
+  authEmail: string | null;
   currentUser: Employee;
   /** Effective application role — drives navigation and permissions. */
   role: AppRole;
@@ -101,11 +106,11 @@ interface AppContextValue {
   /** Notification log — see lib/notifications.ts. Newest first. */
   notifications: NotificationPayload[];
 
-  signIn: (email: string) => void;
+  /** Redirects to Google's OAuth consent screen; resolves with an error message only if the redirect itself couldn't start. */
+  signInWithGoogle: () => Promise<string | null>;
+  /** Redirects to Microsoft's OAuth consent screen; resolves with an error message only if the redirect itself couldn't start. */
+  signInWithMicrosoft: () => Promise<string | null>;
   signOut: () => void;
-  completeFirstLogin: () => void;
-  /** Preview-only user switcher so both roles can be demoed. */
-  switchUser: (employeeId: string) => void;
 
   submitRequest: (input: NewRequestInput) => Promise<PTORequest>;
   approveRequest: (id: string, comment?: string) => void;
@@ -114,7 +119,6 @@ interface AppContextValue {
   cancelRequest: (id: string, reason?: string) => void;
 
   createAccount: (input: NewAccountInput) => void;
-  resetPassword: (accountId: string) => void;
   revokeAccess: (accountId: string) => void;
   restoreAccess: (accountId: string) => void;
   deleteAccount: (accountId: string) => void;
@@ -122,12 +126,9 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-/** Default preview identity: an admin, so the full app is visible up front. */
-const DEFAULT_USER_ID = 'emp-01';
-
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session>('signed-out');
-  const [currentUserId, setCurrentUserId] = useState(DEFAULT_USER_ID);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [requests, setRequests] = useState<PTORequest[]>([]);
   const [accounts, setAccounts] = useState<UserAccount[]>([]);
@@ -174,50 +175,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const currentUser = useMemo(
-    () => employees.find((e) => e.id === currentUserId) ?? employees[0],
-    [employees, currentUserId],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      setAuthEmail(data.session?.user.email ?? null);
+      setAuthChecked(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, authSession) => {
+      setAuthEmail(authSession?.user.email ?? null);
+      setAuthChecked(true);
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // A real @valveman.com/@fswelsford.com sign-in isn't enough by itself —
+  // the email must also match an Active, linked Account Management row.
+  // `pto_accounts.employee_id` is nullable (`on delete set null`), so an
+  // orphaned-but-Active row must not resolve to *some other* employee.
+  const currentUser = useMemo(() => {
+    if (!authEmail) return undefined;
+    const account = accounts.find((a) => a.email.toLowerCase() === authEmail.toLowerCase());
+    if (!account || account.status !== 'Active') return undefined;
+    return employees.find((e) => e.id === account.employeeId);
+  }, [authEmail, accounts, employees]);
 
   const balances = useMemo(() => computeBalances(employees, requests), [employees, requests]);
   const summary = useMemo(() => computeSummary(employees, requests), [employees, requests]);
 
-  const signIn = useCallback(
-    (email: string) => {
-      const match = employees.find(
-        (e) => e.email.toLowerCase() === email.trim().toLowerCase(),
-      );
-      const account = accounts.find(
-        (a) => a.email.toLowerCase() === email.trim().toLowerCase(),
-      );
-      if (match) setCurrentUserId(match.id);
-      // Mock auth: any password is accepted. Accounts that have never completed
-      // the forced change are routed through the first-login screen.
-      setSession(account?.mustChangePassword ? 'must-change-password' : 'signed-in');
-    },
-    [employees, accounts],
-  );
+  const signInWithGoogle = useCallback(async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin, queryParams: { hd: 'valveman.com' } },
+    });
+    return error?.message ?? null;
+  }, []);
 
-  const signOut = useCallback(() => setSession('signed-out'), []);
+  const signInWithMicrosoft = useCallback(async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: { redirectTo: window.location.origin, queryParams: { domain_hint: 'fswelsford.com' } },
+    });
+    return error?.message ?? null;
+  }, []);
 
-  const completeFirstLogin = useCallback(() => {
-    setAccounts((prev) =>
-      prev.map((a) =>
-        a.employeeId === currentUserId ? { ...a, mustChangePassword: false } : a,
-      ),
-    );
-    setSession('signed-in');
-    void supabase
-      .from('pto_accounts')
-      .update({ must_change_password: false })
-      .eq('employee_id', currentUserId)
-      .then(({ error }) => {
-        if (error) console.error('[PTO Tracker] failed to persist first-login completion:', error);
-      });
-  }, [currentUserId]);
-
-  const switchUser = useCallback((employeeId: string) => {
-    setCurrentUserId(employeeId);
+  const signOut = useCallback(() => {
+    void supabase.auth.signOut();
   }, []);
 
   const submitRequest = useCallback(
@@ -271,11 +277,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const approveRequest = useCallback(
     (id: string, comment?: string) => {
       void (async () => {
-        const updated = await approveRequestRpc(id, currentUser.name, comment);
+        const updated = await approveRequestRpc(id, currentUser?.name ?? 'Management', comment);
         if (!updated) return;
         setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         const notification = sendNotification(
-          buildReviewedNotification(updated, employees, currentUser.name),
+          buildReviewedNotification(updated, employees, currentUser?.name ?? 'Management'),
         );
         setNotifications((prev) => [notification, ...prev]);
         logNotification(notification);
@@ -288,11 +294,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const rejectRequest = useCallback(
     (id: string, rejectionReason: string) => {
       void (async () => {
-        const updated = await rejectRequestRpc(id, currentUser.name, rejectionReason);
+        const updated = await rejectRequestRpc(id, currentUser?.name ?? 'Management', rejectionReason);
         if (!updated) return;
         setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         const notification = sendNotification(
-          buildReviewedNotification(updated, employees, currentUser.name),
+          buildReviewedNotification(updated, employees, currentUser?.name ?? 'Management'),
         );
         setNotifications((prev) => [notification, ...prev]);
         logNotification(notification);
@@ -304,7 +310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cancelRequest = useCallback(
     (id: string, reason?: string) => {
       void (async () => {
-        const updated = await cancelRequestRpc(id, currentUser.name, reason);
+        const updated = await cancelRequestRpc(id, currentUser?.name ?? 'Management', reason);
         if (!updated) return;
         setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         // No-op on the calendar side if this request was never approved (never had an event).
@@ -344,7 +350,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           hire_date: input.hireDate,
           annual_pto_allowance: input.annualPtoAllowance,
           status: 'Active',
-          must_change_password: true,
         });
         if (acctError) throw acctError;
 
@@ -375,7 +380,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             annualPtoAllowance: input.annualPtoAllowance,
             status: 'Active',
             createdAt: todayISO(),
-            mustChangePassword: true,
+            mustChangePassword: false,
             employeeId,
           },
           ...prev,
@@ -384,21 +389,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [employees.length],
   );
-
-  const resetPassword = useCallback((accountId: string) => {
-    // No password is stored anywhere (mocked auth) — this just forces the
-    // employee through the first-login screen again.
-    setAccounts((prev) =>
-      prev.map((a) => (a.id === accountId ? { ...a, mustChangePassword: true } : a)),
-    );
-    void supabase
-      .from('pto_accounts')
-      .update({ must_change_password: true })
-      .eq('id', accountId)
-      .then(({ error }) => {
-        if (error) console.error('[PTO Tracker] failed to persist password reset:', error);
-      });
-  }, []);
 
   const revokeAccess = useCallback((accountId: string) => {
     setAccounts((prev) =>
@@ -437,10 +427,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
-  if (loading) {
+  if (loading || !authChecked) {
     return <FullScreenNotice title="Loading Valveman PTO Tracker…" />;
   }
-  if (loadError || !currentUser || !routing) {
+  if (loadError || !routing) {
     return (
       <FullScreenNotice
         title="Couldn't load the PTO Tracker"
@@ -452,13 +442,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  const isAdmin = currentUser.appRole === 'Admin';
-  const isManagement = isAdmin || currentUser.email.toLowerCase() === routing.princesEmail.toLowerCase();
+  const session: Session = !authEmail ? 'signed-out' : currentUser ? 'signed-in' : 'unprovisioned';
+  const isAdmin = currentUser?.appRole === 'Admin';
+  const isManagement =
+    isAdmin || currentUser?.email.toLowerCase() === routing.princesEmail.toLowerCase();
 
   const value: AppContextValue = {
     session,
-    currentUser,
-    role: currentUser.appRole,
+    authEmail,
+    // Only ever read by routes rendered while session === 'signed-in', where
+    // currentUser is guaranteed resolved — see the `session` derivation above.
+    currentUser: currentUser as Employee,
+    role: currentUser?.appRole ?? 'Employee',
     isAdmin,
     isManagement,
     employees,
@@ -469,16 +464,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     summary,
     lastSubmittedId,
     notifications,
-    signIn,
+    signInWithGoogle,
+    signInWithMicrosoft,
     signOut,
-    completeFirstLogin,
-    switchUser,
     submitRequest,
     approveRequest,
     rejectRequest,
     cancelRequest,
     createAccount,
-    resetPassword,
     revokeAccess,
     restoreAccess,
     deleteAccount,

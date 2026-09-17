@@ -1,24 +1,67 @@
-import { useState } from 'react';
-import { ArrowRight, Lock, Mail, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Field, Input } from '@/components/ui/Field';
 import { LogoMark, LogoLockup } from '@/components/layout/Logo';
 import { useApp } from '@/context/AppContext';
 
-export function LoginPage() {
-  const { signIn, employees } = useApp();
-  const [email, setEmail] = useState('princes@valveman.com');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+function GoogleGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.7-3.87 2.7-6.62Z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.95 10.7A5.4 5.4 0 0 1 3.67 9c0-.59.1-1.16.28-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.32 0 2.51.46 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58Z"
+      />
+    </svg>
+  );
+}
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setError('Enter your work email and password to continue.');
-      return;
+function MicrosoftGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+      <rect x="0" y="0" width="8.5" height="8.5" fill="#F25022" />
+      <rect x="9.5" y="0" width="8.5" height="8.5" fill="#7FBA00" />
+      <rect x="0" y="9.5" width="8.5" height="8.5" fill="#00A4EF" />
+      <rect x="9.5" y="9.5" width="8.5" height="8.5" fill="#FFB900" />
+    </svg>
+  );
+}
+
+export function LoginPage() {
+  const { signInWithGoogle, signInWithMicrosoft } = useApp();
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState<'google' | 'microsoft' | null>(null);
+
+  // A cancelled/failed OAuth round trip redirects back with
+  // ?error=...&error_description=... instead of landing in a signed-in
+  // state — surface it, then clean the URL so a refresh doesn't re-show it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search || window.location.hash.slice(1));
+    const description = params.get('error_description') || params.get('error');
+    if (description) {
+      setError(description.replace(/\+/g, ' '));
+      window.history.replaceState(null, '', window.location.pathname);
     }
+  }, []);
+
+  async function handle(provider: 'google' | 'microsoft') {
     setError('');
-    signIn(email);
+    setPending(provider);
+    const message =
+      provider === 'google' ? await signInWithGoogle() : await signInWithMicrosoft();
+    if (message) setError(message);
+    setPending(null);
   }
 
   return (
@@ -61,7 +104,7 @@ export function LoginPage() {
         </p>
       </div>
 
-      {/* Form panel */}
+      {/* Sign-in panel */}
       <div className="flex flex-1 items-center justify-center bg-canvas px-5 py-12 sm:px-8">
         <div className="w-full max-w-[420px]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
@@ -76,107 +119,41 @@ export function LoginPage() {
 
           <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Sign in</h1>
           <p className="mt-1.5 text-[14px] text-slateish-500">
-            Use the work email your administrator set up for you.
+            Sign in with your Valveman or F.S. Welsford work account.
           </p>
 
-          <form onSubmit={submit} className="mt-7 space-y-5">
-            <Field label="Work email" required>
-              <div className="relative">
-                <Mail
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slateish-400"
-                />
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@valveman.com"
-                  className="pl-9"
-                  autoComplete="username"
-                />
-              </div>
-            </Field>
-
-            <Field
-              label="Password"
-              required
-              hint={
-                <button
-                  type="button"
-                  className="font-semibold text-accent-600 hover:text-accent-500"
-                  onClick={() =>
-                    setError(
-                      'Password recovery is not wired up in this prototype — ask an administrator to reset your password.',
-                    )
-                  }
-                >
-                  Forgot password?
-                </button>
-              }
+          <div className="mt-7 space-y-3">
+            <Button
+              variant="secondary"
+              size="lg"
+              block
+              disabled={pending !== null}
+              onClick={() => handle('google')}
             >
-              <div className="relative">
-                <Lock
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slateish-400"
-                />
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="pl-9"
-                  autoComplete="current-password"
-                />
-              </div>
-            </Field>
-
-            {error && (
-              <p className="rounded-xl border border-warning-200 bg-warning-50 px-3.5 py-2.5 text-[12.5px] font-medium text-warning-700">
-                {error}
-              </p>
-            )}
-
-            <Button type="submit" block size="lg">
-              Sign In <ArrowRight size={16} />
+              <GoogleGlyph />
+              {pending === 'google' ? 'Redirecting…' : 'Continue with Google'}
             </Button>
-          </form>
-
-          {/* Prototype helper — removed once real auth lands. */}
-          <div className="mt-7 rounded-2xl border border-slateish-200 bg-white p-4 shadow-card">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-slateish-400">
-              Prototype access
-            </p>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-slateish-500">
-              Authentication is mocked — any password works. Sign in as an admin with{' '}
-              <button
-                type="button"
-                onClick={() => setEmail('princes@valveman.com')}
-                className="font-semibold text-accent-600 hover:underline"
-              >
-                princes@valveman.com
-              </button>
-              , or as an employee with{' '}
-              <button
-                type="button"
-                onClick={() => setEmail('josh@valveman.com')}
-                className="font-semibold text-accent-600 hover:underline"
-              >
-                josh@valveman.com
-              </button>
-              . Try{' '}
-              <button
-                type="button"
-                onClick={() => setEmail('amr@valveman.com')}
-                className="font-semibold text-accent-600 hover:underline"
-              >
-                amr@valveman.com
-              </button>{' '}
-              to see the forced first-login screen. ({employees.length} accounts seeded.)
-            </p>
+            <Button
+              variant="secondary"
+              size="lg"
+              block
+              disabled={pending !== null}
+              onClick={() => handle('microsoft')}
+            >
+              <MicrosoftGlyph />
+              {pending === 'microsoft' ? 'Redirecting…' : 'Continue with Microsoft'}
+            </Button>
           </div>
 
+          {error && (
+            <p className="mt-5 rounded-xl border border-warning-200 bg-warning-50 px-3.5 py-2.5 text-[12.5px] font-medium text-warning-700">
+              {error}
+            </p>
+          )}
+
           <p className="mt-6 text-center text-[11.5px] text-slateish-400">
-            Invite-only access. Only an administrator can create an account.
+            Invite-only access — an administrator must create your account before you can sign
+            in.
           </p>
         </div>
       </div>

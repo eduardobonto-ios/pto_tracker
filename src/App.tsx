@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
 import { LoginPage } from '@/pages/Login';
-import { FirstLoginPage } from '@/pages/FirstLogin';
+import { AccessPendingPage } from '@/pages/AccessPending';
 import { DashboardPage } from '@/pages/Dashboard';
 import { FileLeavePage } from '@/pages/FileLeave';
 import { MyPTOPage } from '@/pages/MyPTO';
@@ -56,7 +56,7 @@ export default function App() {
   }, [session, landing, navigate]);
 
   if (session === 'signed-out') return <LoginPage />;
-  if (session === 'must-change-password') return <FirstLoginPage />;
+  if (session === 'unprovisioned') return <AccessPendingPage />;
 
   return (
     <Routes>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { KeyRound, Lock, Search, Trash2, UserMinus, UserPlus2 } from 'lucide-react';
+import { Lock, Search, Trash2, UserMinus, UserPlus2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AccountCreationModal } from '@/components/AccountCreationModal';
 import { Card, CardBody } from '@/components/ui/Card';
@@ -10,17 +10,15 @@ import { EmptyState, Table, Td, Th, Tr } from '@/components/ui/Table';
 import { Avatar } from '@/components/ui/Misc';
 import { AccountStatusBadge, RoleBadge } from '@/components/StatusBadge';
 import { useApp } from '@/context/AppContext';
-import { formatDate, generateTempPassword } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import type { UserAccount } from '@/types';
 
 export function AccountManagementPage() {
-  const { accounts, resetPassword, revokeAccess, restoreAccess, deleteAccount } = useApp();
+  const { accounts, revokeAccess, restoreAccess, deleteAccount } = useApp();
 
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [resetTarget, setResetTarget] = useState<UserAccount | null>(null);
-  const [newTempPassword, setNewTempPassword] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<UserAccount | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -34,16 +32,6 @@ export function AccountManagementPage() {
       return true;
     });
   }, [accounts, query, roleFilter, statusFilter]);
-
-  function openReset(account: UserAccount) {
-    setResetTarget(account);
-    setNewTempPassword(generateTempPassword());
-  }
-
-  function confirmReset() {
-    if (resetTarget) resetPassword(resetTarget.id);
-    setResetTarget(null);
-  }
 
   return (
     <AppLayout
@@ -62,8 +50,8 @@ export function AccountManagementPage() {
             <Lock size={14} className="text-accent-600" /> Invite-only access (SEC-01)
           </p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-slateish-600">
-            There is no public sign-up. Accounts are provisioned here, and every new employee
-            is forced to set their own password the first time they sign in.
+            There is no public sign-up. Accounts are provisioned here — employees sign in with
+            their existing Valveman Google Workspace or F.S. Welsford Microsoft 365 account.
           </p>
         </div>
 
@@ -132,11 +120,6 @@ export function AccountManagementPage() {
                       <Avatar name={a.fullName} department={a.department} size="sm" />
                       <div className="min-w-0">
                         <p className="truncate font-medium text-navy-900">{a.email}</p>
-                        {a.mustChangePassword && (
-                          <p className="truncate text-[11.5px] text-warning-600">
-                            Password change pending
-                          </p>
-                        )}
                       </div>
                     </div>
                   </Td>
@@ -152,16 +135,6 @@ export function AccountManagementPage() {
                   <Td className="whitespace-nowrap tabular-nums">{formatDate(a.createdAt)}</Td>
                   <Td align="right">
                     <div className="flex justify-end gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => openReset(a)}
-                        aria-label="Reset password"
-                        title="Reset password"
-                        className="w-8 px-0"
-                      >
-                        <KeyRound size={14} className="text-accent-500" />
-                      </Button>
                       {a.status === 'Active' ? (
                         <Button
                           size="sm"
@@ -207,48 +180,12 @@ export function AccountManagementPage() {
 
       <AccountCreationModal open={createOpen} onClose={() => setCreateOpen(false)} />
 
-      {/* Reset password */}
-      <Modal
-        open={!!resetTarget}
-        onClose={() => setResetTarget(null)}
-        title="Reset password"
-        description={`A new temporary password for ${resetTarget?.fullName ?? ''}`}
-        icon={<KeyRound size={18} />}
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setResetTarget(null)}>
-              Cancel
-            </Button>
-            <Button onClick={confirmReset}>Reset password</Button>
-          </>
-        }
-      >
-        <p className="text-[13px] leading-relaxed text-slateish-600">
-          No email is sent. Copy this password and share it with{' '}
-          <span className="font-semibold text-navy-800">{resetTarget?.email}</span> directly.
-          They will be forced to set a new one on their next sign-in.
-        </p>
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slateish-200 bg-slateish-50 px-4 py-3">
-          <code className="font-mono text-sm tracking-wide text-navy-900">
-            {newTempPassword}
-          </code>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => navigator.clipboard?.writeText(newTempPassword)}
-          >
-            Copy
-          </Button>
-        </div>
-      </Modal>
-
       {/* Delete account */}
       <Modal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete this account?"
-        description="This cannot be undone in the prototype."
+        description="This cannot be undone."
         icon={<Trash2 size={18} className="text-danger-600" />}
         size="sm"
         footer={
