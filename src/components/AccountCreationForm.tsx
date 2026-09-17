@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Check, UserPlus } from 'lucide-react';
+import { Check, Copy, KeyRound, RefreshCw, UserPlus } from 'lucide-react';
 import { Field, Input, Select } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
 import { useApp } from '@/context/AppContext';
-import { todayISO } from '@/lib/utils';
+import { generateTempPassword, todayISO } from '@/lib/utils';
 import { DEPARTMENTS, type AppRole, type Department } from '@/types';
 
 const JOB_TITLE_SUGGESTIONS = [
@@ -33,8 +33,20 @@ export function useAccountCreationForm() {
   const [department, setDepartment] = useState<Department>('Operations');
   const [hireDate, setHireDate] = useState(todayISO());
   const [allowance, setAllowance] = useState('5');
+  const [password, setPassword] = useState(() => generateTempPassword());
+  const [copied, setCopied] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [created, setCreated] = useState<string | null>(null);
+
+  async function copyPassword() {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard is unavailable in some embedded contexts — fail quietly.
+    }
+  }
 
   function submit() {
     const e: Record<string, string> = {};
@@ -55,6 +67,7 @@ export function useAccountCreationForm() {
       department,
       hireDate,
       annualPtoAllowance: Number(allowance),
+      tempPassword: password,
     });
 
     setCreated(email.trim());
@@ -65,6 +78,7 @@ export function useAccountCreationForm() {
     setDepartment('Operations');
     setHireDate(todayISO());
     setAllowance('5');
+    setPassword(generateTempPassword());
     setTimeout(() => setCreated(null), 5000);
   }
 
@@ -83,6 +97,10 @@ export function useAccountCreationForm() {
     setHireDate,
     allowance,
     setAllowance,
+    password,
+    setPassword,
+    copied,
+    copyPassword,
     errors,
     created,
     submit,
@@ -166,10 +184,49 @@ export function AccountCreationFields({ f }: { f: AccountCreationFormState }) {
         </Field>
       </div>
 
+      <Field
+        label="Temporary password"
+        help="No email is sent. Copy this and share it with the employee directly — they are forced to set their own password on first login."
+      >
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <KeyRound
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slateish-400"
+            />
+            <Input
+              value={f.password}
+              onChange={(e) => f.setPassword(e.target.value)}
+              className="pl-9 font-mono tracking-wide"
+            />
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => f.setPassword(generateTempPassword())}
+            aria-label="Generate a new password"
+            className="w-11 px-0"
+          >
+            <RefreshCw size={16} className="text-accent-500" />
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={f.copyPassword}
+            aria-label="Copy password"
+            className="w-11 px-0"
+          >
+            {f.copied ? (
+              <Check size={16} className="text-success-600" />
+            ) : (
+              <Copy size={16} className="text-accent-500" />
+            )}
+          </Button>
+        </div>
+      </Field>
+
       {f.created && (
         <div className="flex items-center gap-2 rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-[13px] font-medium text-success-700">
-          <Check size={16} /> Account created for {f.created}. They can sign in immediately
-          with their Valveman or F.S. Welsford work account.
+          <Check size={16} /> Account created for {f.created}. Share the temporary password
+          with them directly.
         </div>
       )}
     </div>

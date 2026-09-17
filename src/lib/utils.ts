@@ -81,3 +81,23 @@ export function inclusiveDayCount(startIso: string, endIso: string): number {
 export function uid(prefix = 'id'): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
+
+/**
+ * Generate a temporary password in the same shape the Technical Playbook uses:
+ * short, mixed-case, alphanumeric, no ambiguous characters.
+ */
+export function generateTempPassword(length = 7): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const all = upper + lower + digits;
+  const pick = (set: string) => set[Math.floor(Math.random() * set.length)];
+  const chars = [pick(upper), pick(digits), pick(lower)];
+  while (chars.length < length) chars.push(pick(all));
+  // Fisher–Yates so the guaranteed classes aren't always in the same slots.
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}

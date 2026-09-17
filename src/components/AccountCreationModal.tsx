@@ -15,7 +15,7 @@ export function AccountCreationModal({ open, onClose }: { open: boolean; onClose
       open={open}
       onClose={onClose}
       title="Create an account"
-      description="They'll sign in with their existing Google Workspace (valveman.com) or Microsoft 365 (fswelsford.com) work account — nothing to set up."
+      description="A temporary password is generated automatically. The employee must set their own on first login."
       icon={<UserPlus size={18} />}
       size="lg"
       footer={<AccountCreationSubmitAction f={f} />}
