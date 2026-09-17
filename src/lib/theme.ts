@@ -82,23 +82,27 @@ export const PTO_ELIGIBILITY_MONTHS = 6;
  *
  * Every employee starts at `PTO_BASE_ENTITLEMENT_DAYS` once they clear the
  * 6-month eligibility rule. From there, which "cohort" (see
- * `lib/pto.ts#usesAnniversaryReset`) they fall into decides both how their
- * entitlement grows and when their used-days counter resets for the year:
+ * `lib/pto.ts#usesAnniversaryReset`) they fall into decides when their PTO
+ * year (and thus days-used counter) resets:
  *  - Employees hired in `PTO_NEW_HIRE_COHORT_START_YEAR` or later, and
- *    Territory Managers regardless of hire year, gain
- *    `PTO_ANNUAL_INCREMENT_DAYS` on every hire-date anniversary, and their
- *    PTO year (and thus days-used counter) also resets on that anniversary.
- *  - Everyone else instead gains `PTO_ANNUAL_INCREMENT_DAYS` and resets
- *    their PTO year on every `PTO_LEGACY_CREDIT_MONTH`/`PTO_LEGACY_CREDIT_DAY`
- *    (June 1) that passes after they're eligible.
- * Entitlement never exceeds `PTO_MAX_ENTITLEMENT_DAYS` for either cohort.
+ *    `PTO_TERRITORY_MANAGER_JOB_TITLES` regardless of hire year, reset on
+ *    their hire-date anniversary.
+ *  - Everyone else resets on every `PTO_LEGACY_CREDIT_MONTH`/
+ *    `PTO_LEGACY_CREDIT_DAY` (June 1) that passes after they're eligible.
+ * Entitlement growth differs by cohort too: the anniversary/June-1 cohorts
+ * above gain `PTO_ANNUAL_INCREMENT_DAYS` on each cycle, capped at
+ * `PTO_MAX_ENTITLEMENT_DAYS` — except `PTO_TERRITORY_MANAGER_JOB_TITLES`,
+ * who get `PTO_MAX_ENTITLEMENT_DAYS` immediately once eligible, no
+ * graduated ramp-up. Confirmed against the legacy spreadsheet: all real
+ * Territory Managers show the max regardless of hire date, never a
+ * graduated 5/7/9 in between.
  */
 export const PTO_BASE_ENTITLEMENT_DAYS = 5;
 export const PTO_ANNUAL_INCREMENT_DAYS = 2;
 export const PTO_MAX_ENTITLEMENT_DAYS = 10;
 export const PTO_NEW_HIRE_COHORT_START_YEAR = 2026;
-/** Territory Managers always reset/grow on their hire-date anniversary, regardless of hire year. */
-export const PTO_ANNIVERSARY_RESET_JOB_TITLES = ['Territory Manager'];
+/** Always reset on hire-date anniversary and get the max entitlement immediately, regardless of hire year. */
+export const PTO_TERRITORY_MANAGER_JOB_TITLES = ['Territory Manager'];
 /** Month is 0-indexed: 5 = June. */
 export const PTO_LEGACY_CREDIT_MONTH = 5;
 export const PTO_LEGACY_CREDIT_DAY = 1;

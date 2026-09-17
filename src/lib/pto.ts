@@ -7,7 +7,6 @@
  */
 
 import {
-  PTO_ANNIVERSARY_RESET_JOB_TITLES,
   PTO_ANNUAL_INCREMENT_DAYS,
   PTO_BASE_ENTITLEMENT_DAYS,
   PTO_ELIGIBILITY_MONTHS,
@@ -15,6 +14,7 @@ import {
   PTO_LEGACY_CREDIT_MONTH,
   PTO_MAX_ENTITLEMENT_DAYS,
   PTO_NEW_HIRE_COHORT_START_YEAR,
+  PTO_TERRITORY_MANAGER_JOB_TITLES,
 } from './theme';
 import type {
   DashboardSummary,
@@ -55,7 +55,7 @@ export function isEligible(hireDateIso: string, asOf: Date = new Date()): boolea
  * hire year.
  */
 export function usesAnniversaryReset(employee: Pick<Employee, 'hireDate' | 'jobTitle'>): boolean {
-  if (PTO_ANNIVERSARY_RESET_JOB_TITLES.includes(employee.jobTitle)) return true;
+  if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) return true;
   return parseISODate(employee.hireDate).getFullYear() >= PTO_NEW_HIRE_COHORT_START_YEAR;
 }
 
@@ -65,16 +65,18 @@ export function usesAnniversaryReset(employee: Pick<Employee, 'hireDate' | 'jobT
  * `lib/theme.ts`.
  *
  * Returns 0 before the employee clears the 6-month eligibility rule; never
- * exceeds `PTO_MAX_ENTITLEMENT_DAYS` afterwards.
+ * exceeds `PTO_MAX_ENTITLEMENT_DAYS` afterwards. Territory Managers get
+ * `PTO_MAX_ENTITLEMENT_DAYS` immediately once eligible instead of graduating.
  */
 export function computeEntitlement(
   employee: Pick<Employee, 'hireDate' | 'jobTitle'>,
   asOf: Date = new Date(),
 ): number {
-  const hire = parseISODate(employee.hireDate);
   const eligible = parseISODate(eligibilityDate(employee.hireDate));
   if (asOf.getTime() < eligible.getTime()) return 0;
+  if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) return PTO_MAX_ENTITLEMENT_DAYS;
 
+  const hire = parseISODate(employee.hireDate);
   let days = PTO_BASE_ENTITLEMENT_DAYS;
 
   if (usesAnniversaryReset(employee)) {
