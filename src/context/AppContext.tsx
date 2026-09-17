@@ -111,8 +111,6 @@ interface AppContextValue {
   signOut: () => void;
   /** Forced first-login password change. Returns an error message if `current` doesn't match, or null on success. */
   changePassword: (current: string, next: string) => Promise<string | null>;
-  /** Preview-only user switcher so both roles can be demoed. */
-  switchUser: (employeeId: string) => void;
 
   submitRequest: (input: NewRequestInput) => Promise<PTORequest>;
   approveRequest: (id: string, comment?: string) => void;
@@ -227,10 +225,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [accounts, currentUserId],
   );
-
-  const switchUser = useCallback((employeeId: string) => {
-    setCurrentUserId(employeeId);
-  }, []);
 
   const submitRequest = useCallback(
     async (input: NewRequestInput): Promise<PTORequest> => {
@@ -479,7 +473,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     signIn,
     signOut,
     changePassword,
-    switchUser,
     submitRequest,
     approveRequest,
     rejectRequest,
