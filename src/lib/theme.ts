@@ -81,18 +81,24 @@ export const PTO_ELIGIBILITY_MONTHS = 6;
  * Annual entitlement rules (see `lib/pto.ts#computeEntitlement`).
  *
  * Every employee starts at `PTO_BASE_ENTITLEMENT_DAYS` once they clear the
- * 6-month eligibility rule. From there:
- *  - Employees hired in `PTO_NEW_HIRE_COHORT_START_YEAR` or later gain
- *    `PTO_ANNUAL_INCREMENT_DAYS` on every hire-date anniversary.
- *  - Employees hired before that year instead gain
- *    `PTO_ANNUAL_INCREMENT_DAYS` on every `PTO_LEGACY_CREDIT_MONTH`/
- *    `PTO_LEGACY_CREDIT_DAY` (June 1) that passes after they're eligible.
+ * 6-month eligibility rule. From there, which "cohort" (see
+ * `lib/pto.ts#usesAnniversaryReset`) they fall into decides both how their
+ * entitlement grows and when their used-days counter resets for the year:
+ *  - Employees hired in `PTO_NEW_HIRE_COHORT_START_YEAR` or later, and
+ *    Territory Managers regardless of hire year, gain
+ *    `PTO_ANNUAL_INCREMENT_DAYS` on every hire-date anniversary, and their
+ *    PTO year (and thus days-used counter) also resets on that anniversary.
+ *  - Everyone else instead gains `PTO_ANNUAL_INCREMENT_DAYS` and resets
+ *    their PTO year on every `PTO_LEGACY_CREDIT_MONTH`/`PTO_LEGACY_CREDIT_DAY`
+ *    (June 1) that passes after they're eligible.
  * Entitlement never exceeds `PTO_MAX_ENTITLEMENT_DAYS` for either cohort.
  */
 export const PTO_BASE_ENTITLEMENT_DAYS = 5;
 export const PTO_ANNUAL_INCREMENT_DAYS = 2;
 export const PTO_MAX_ENTITLEMENT_DAYS = 10;
 export const PTO_NEW_HIRE_COHORT_START_YEAR = 2026;
+/** Territory Managers always reset/grow on their hire-date anniversary, regardless of hire year. */
+export const PTO_ANNIVERSARY_RESET_JOB_TITLES = ['Territory Manager'];
 /** Month is 0-indexed: 5 = June. */
 export const PTO_LEGACY_CREDIT_MONTH = 5;
 export const PTO_LEGACY_CREDIT_DAY = 1;

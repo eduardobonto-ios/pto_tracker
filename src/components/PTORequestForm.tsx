@@ -8,7 +8,7 @@ import { DetailRow, PillGroup } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
 import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
 import { useApp, type NewRequestInput } from '@/context/AppContext';
-import { computeDays, defaultPayStatus } from '@/lib/pto';
+import { computeDays, defaultPayStatus, round } from '@/lib/pto';
 import { formatDateRange, formatDays, todayISO } from '@/lib/utils';
 import {
   DURATION_TYPES,
@@ -42,7 +42,7 @@ export function useLeaveRequestForm({
 }: {
   onSubmitted?: (requestId: string) => void;
 } = {}) {
-  const { currentUser, employees, isAdmin, submitRequest } = useApp();
+  const { currentUser, employees, isAdmin, submitRequest, balances } = useApp();
 
   const blank = useMemo<FormState>(
     () => ({
@@ -68,6 +68,24 @@ export function useLeaveRequestForm({
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  /**
+   * Leave type drives duration, not just the reverse — "Half Day Leave" is a
+   * half day by definition, so picking it forces a half-day duration and a
+   * single-day range instead of leaving those free to disagree with it.
+   */
+  function setLeaveType(value: LeaveType) {
+    setForm((f) => {
+      const next = { ...f, leaveType: value };
+      if (value === 'Half Day Leave') {
+        if (next.duration !== 'Half Day (AM)' && next.duration !== 'Half Day (PM)') {
+          next.duration = 'Half Day (AM)';
+        }
+        next.endDate = next.startDate;
+      }
+      return next;
+    });
+  }
+
   const totalHours = useMemo(() => {
     if (form.duration !== 'Custom Hours' || !form.startTime || !form.endTime) return 0;
     const [sh, sm] = form.startTime.split(':').map(Number);
@@ -87,16 +105,35 @@ export function useLeaveRequestForm({
   const selectedEmployee = employees.find((e) => e.id === form.employeeId) ?? currentUser;
   const payStatus = form.leaveType ? defaultPayStatus(form.leaveType) : 'Paid';
 
+  const selectedBalance = balances[selectedEmployee.id];
+  const eligible = selectedBalance?.eligible ?? true;
+  // Other Pending requests haven't drawn down `daysRemaining` yet, so a new
+  // request must fit what's left once they're also accounted for.
+  const daysAvailable = selectedBalance
+    ? round(selectedBalance.daysRemaining - selectedBalance.pendingDays)
+    : Infinity;
+
   function validate() {
     const e: Record<string, string> = {};
     if (!form.employeeId) e.employeeId = 'Select a team member.';
+    if (!eligible) {
+      e.employeeId = `${selectedEmployee.name} is not yet eligible for PTO (6 months of employment required).`;
+    }
     if (!form.leaveType) e.leaveType = 'Choose a leave type.';
     if (!form.startDate) e.startDate = 'A start date is required.';
     if (form.endDate && form.endDate < form.startDate)
       e.endDate = 'The end date cannot be before the start date.';
+    if (form.leaveType === 'Half Day Leave' && form.endDate && form.endDate !== form.startDate) {
+      e.endDate = 'Half Day Leave can only be filed for a single day.';
+    }
     if (!form.coverage.trim()) e.coverage = 'Tell us who covers during your absence.';
     if (form.duration === 'Custom Hours' && totalHours <= 0)
       e.startTime = 'Enter a valid start and end time.';
+    if (eligible && payStatus === 'Paid' && days > daysAvailable) {
+      e.days = `This request is ${formatDays(days)} day(s), which exceeds the ${formatDays(
+        Math.max(daysAvailable, 0),
+      )} day(s) remaining once other pending requests are counted.`;
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -138,11 +175,14 @@ export function useLeaveRequestForm({
     employees,
     form,
     set,
+    setLeaveType,
     errors,
     totalHours,
     days,
     selectedEmployee,
     payStatus,
+    eligible,
+    daysAvailable,
     reset,
     openReview,
     confirmSubmit,
@@ -157,14 +197,30 @@ type LeaveRequestFormState = ReturnType<typeof useLeaveRequestForm>;
 
 /** The field inputs only — no wrapping card and no submit buttons, so callers can place those wherever fits (inline, or a modal's sticky footer). */
 export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
-  const { form, set, errors, isAdmin, employees, totalHours, days, payStatus, selectedEmployee } = f;
+  const {
+    form,
+    set,
+    setLeaveType,
+    errors,
+    isAdmin,
+    employees,
+    totalHours,
+    days,
+    payStatus,
+    selectedEmployee,
+    eligible,
+  } = f;
+  const isHalfDayLeave = form.leaveType === 'Half Day Leave';
+  const durationOptions = isHalfDayLeave
+    ? DURATION_TYPES.filter((d) => d === 'Half Day (AM)' || d === 'Half Day (PM)')
+    : DURATION_TYPES;
 
   return (
     <div className="space-y-5">
       <Field
         label="Team member"
         required
-        error={errors.employeeId}
+        error={!eligible ? undefined : errors.employeeId}
         help={isAdmin ? 'As an admin you may file on behalf of another team member.' : 'Locked to your own account.'}
       >
         <Select
@@ -180,8 +236,18 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
         </Select>
       </Field>
 
+      {!eligible && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-warning-100 bg-warning-50 p-3.5">
+          <Info size={16} className="mt-0.5 shrink-0 text-warning-600" />
+          <p className="text-[12.5px] leading-relaxed text-warning-700">
+            {errors.employeeId ??
+              `${selectedEmployee.name} is not yet eligible for PTO — 6 months of employment are required before leave can be filed. Submitting is disabled until then.`}
+          </p>
+        </div>
+      )}
+
       <Field label="Type of leave" required error={errors.leaveType}>
-        <Select value={form.leaveType} onChange={(e) => set('leaveType', e.target.value as LeaveType)}>
+        <Select value={form.leaveType} onChange={(e) => setLeaveType(e.target.value as LeaveType)}>
           <option value="">Select a leave type…</option>
           {LEAVE_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -206,14 +272,22 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
             type="date"
             value={form.startDate}
             min="2026-01-01"
-            onChange={(e) => set('startDate', e.target.value)}
+            onChange={(e) => {
+              set('startDate', e.target.value);
+              if (isHalfDayLeave) set('endDate', e.target.value);
+            }}
           />
         </Field>
-        <Field label="Date to" help="Leave blank if same as start date" error={errors.endDate}>
+        <Field
+          label="Date to"
+          help={isHalfDayLeave ? 'Half Day Leave is always a single day' : 'Leave blank if same as start date'}
+          error={errors.endDate}
+        >
           <Input
             type="date"
             value={form.endDate}
             min={form.startDate || undefined}
+            disabled={isHalfDayLeave}
             onChange={(e) => set('endDate', e.target.value)}
           />
         </Field>
@@ -225,9 +299,16 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
         endDate={form.endDate}
       />
 
-      <Field label="Duration" required>
-        <PillGroup options={DURATION_TYPES} value={form.duration} onChange={(v) => set('duration', v)} />
+      <Field label="Duration" required error={errors.duration}>
+        <PillGroup options={durationOptions} value={form.duration} onChange={(v) => set('duration', v)} />
       </Field>
+
+      {errors.days && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-danger-100 bg-danger-50 p-3.5">
+          <Info size={16} className="mt-0.5 shrink-0 text-danger-600" />
+          <p className="text-[12.5px] leading-relaxed text-danger-700">{errors.days}</p>
+        </div>
+      )}
 
       {form.duration === 'Custom Hours' && (
         <div className="grid gap-5 rounded-xl border border-brand-100 bg-brand-50/50 p-4 sm:grid-cols-3">
@@ -297,7 +378,11 @@ export function LeaveRequestSubmitActions({ f }: { f: LeaveRequestFormState }) {
       <Button variant="secondary" onClick={f.reset}>
         Clear
       </Button>
-      <Button onClick={f.openReview}>
+      <Button
+        onClick={f.openReview}
+        disabled={!f.eligible}
+        title={f.eligible ? undefined : `${f.selectedEmployee.name} is not yet eligible for PTO.`}
+      >
         <Send size={15} /> Submit Request
       </Button>
     </>

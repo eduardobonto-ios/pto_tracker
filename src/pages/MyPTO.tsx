@@ -121,9 +121,9 @@ export function MyPTOPage() {
             <Table className="min-w-[1100px]">
               <thead className="sticky top-0 z-10">
                 <tr>
+                  <Th>Name</Th>
                   <Th>Role</Th>
                   <Th>Department</Th>
-                  <Th>Email</Th>
                   <Th>Hire Date</Th>
                   <Th>Eligibility Date</Th>
                   <Th>Eligible</Th>
@@ -136,9 +136,9 @@ export function MyPTOPage() {
               <tbody>
                 {rows.map(({ employee, balance }) => (
                   <Tr key={employee.id}>
-                    <Td className="font-semibold text-navy-900">{employee.jobTitle}</Td>
+                    <Td className="font-semibold text-navy-900">{employee.name}</Td>
+                    <Td className="whitespace-nowrap">{employee.jobTitle}</Td>
                     <Td className="whitespace-nowrap">{employee.department}</Td>
-                    <Td className="whitespace-nowrap">{employee.email}</Td>
                     <Td className="whitespace-nowrap tabular-nums">
                       {formatDate(employee.hireDate)}
                     </Td>

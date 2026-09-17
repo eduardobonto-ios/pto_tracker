@@ -7,6 +7,7 @@
  */
 
 import {
+  PTO_ANNIVERSARY_RESET_JOB_TITLES,
   PTO_ANNUAL_INCREMENT_DAYS,
   PTO_BASE_ENTITLEMENT_DAYS,
   PTO_ELIGIBILITY_MONTHS,
@@ -47,20 +48,36 @@ export function isEligible(hireDateIso: string, asOf: Date = new Date()): boolea
 }
 
 /**
- * Annual PTO entitlement, computed purely from the employee's Hire Date —
- * see the rules documented next to the constants in `lib/theme.ts`.
+ * Whether this employee grows/resets their PTO on their hire-date
+ * anniversary (true) or on the legacy June 1 date (false) — see the cohort
+ * rules documented next to `PTO_NEW_HIRE_COHORT_START_YEAR` in `lib/theme.ts`.
+ * Territory Managers are always on the anniversary cohort, regardless of
+ * hire year.
+ */
+export function usesAnniversaryReset(employee: Pick<Employee, 'hireDate' | 'jobTitle'>): boolean {
+  if (PTO_ANNIVERSARY_RESET_JOB_TITLES.includes(employee.jobTitle)) return true;
+  return parseISODate(employee.hireDate).getFullYear() >= PTO_NEW_HIRE_COHORT_START_YEAR;
+}
+
+/**
+ * Annual PTO entitlement, computed purely from the employee's Hire Date and
+ * job title — see the rules documented next to the constants in
+ * `lib/theme.ts`.
  *
  * Returns 0 before the employee clears the 6-month eligibility rule; never
  * exceeds `PTO_MAX_ENTITLEMENT_DAYS` afterwards.
  */
-export function computeEntitlement(hireDateIso: string, asOf: Date = new Date()): number {
-  const hire = parseISODate(hireDateIso);
-  const eligible = parseISODate(eligibilityDate(hireDateIso));
+export function computeEntitlement(
+  employee: Pick<Employee, 'hireDate' | 'jobTitle'>,
+  asOf: Date = new Date(),
+): number {
+  const hire = parseISODate(employee.hireDate);
+  const eligible = parseISODate(eligibilityDate(employee.hireDate));
   if (asOf.getTime() < eligible.getTime()) return 0;
 
   let days = PTO_BASE_ENTITLEMENT_DAYS;
 
-  if (hire.getFullYear() >= PTO_NEW_HIRE_COHORT_START_YEAR) {
+  if (usesAnniversaryReset(employee)) {
     // +2 days on every hire-date anniversary that has passed.
     let anniversary = new Date(hire.getFullYear() + 1, hire.getMonth(), hire.getDate());
     while (anniversary.getTime() <= asOf.getTime()) {
@@ -82,6 +99,40 @@ export function computeEntitlement(hireDateIso: string, asOf: Date = new Date())
   }
 
   return Math.min(days, PTO_MAX_ENTITLEMENT_DAYS);
+}
+
+/**
+ * ISO date on which the employee's *current* PTO year began — the reset
+ * boundary for `daysUsed`/`pendingDays` in `computeBalance`. Anniversary-
+ * cohort employees (see `usesAnniversaryReset`) reset on their most recent
+ * hire-date anniversary; legacy-cohort employees reset on the most recent
+ * June 1, floored at their eligibility date so a mid-cycle new eligible
+ * hire doesn't inherit a start date before they could have used any leave.
+ */
+export function currentPtoYearStart(
+  employee: Pick<Employee, 'hireDate' | 'jobTitle'>,
+  asOf: Date = new Date(),
+): string {
+  const hire = parseISODate(employee.hireDate);
+  const eligible = parseISODate(eligibilityDate(employee.hireDate));
+
+  if (usesAnniversaryReset(employee)) {
+    let cursor = new Date(hire.getFullYear(), hire.getMonth(), hire.getDate());
+    while (true) {
+      const next = new Date(cursor.getFullYear() + 1, hire.getMonth(), hire.getDate());
+      if (next.getTime() > asOf.getTime()) break;
+      cursor = next;
+    }
+    return toISODate(cursor);
+  }
+
+  const year = asOf.getFullYear();
+  const juneThisYear = new Date(year, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
+  const start =
+    juneThisYear.getTime() <= asOf.getTime()
+      ? juneThisYear
+      : new Date(year - 1, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
+  return toISODate(start.getTime() > eligible.getTime() ? start : eligible);
 }
 
 /** Chargeable days implied by a duration selection over a date range. */
@@ -118,7 +169,13 @@ export function computeDays(
  * and Rejected requests never reach either bucket, so they never deduct.
  */
 export function computeBalance(employee: Employee, requests: PTORequest[]): PTOBalance {
-  const mine = requests.filter((r) => r.employeeId === employee.id);
+  // Only requests within the employee's current PTO year count toward usage
+  // — see `currentPtoYearStart`. Requests from a prior PTO year that's since
+  // reset no longer draw down this year's balance.
+  const periodStart = currentPtoYearStart(employee);
+  const mine = requests.filter(
+    (r) => r.employeeId === employee.id && r.startDate >= periodStart,
+  );
   const daysUsed = round(
     mine
       .filter((r) => r.status === 'Approved' && r.payStatus === 'Paid')
@@ -128,9 +185,9 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
     mine.filter((r) => r.status === 'Pending').reduce((sum, r) => sum + r.days, 0),
   );
   const eligible = isEligible(employee.hireDate);
-  // Entitlement is derived from Hire Date rather than the legacy per-employee
-  // allowance field — see `computeEntitlement` / lib/theme.ts.
-  const totalPto = computeEntitlement(employee.hireDate);
+  // Entitlement is derived from Hire Date/job title rather than the legacy
+  // per-employee allowance field — see `computeEntitlement` / lib/theme.ts.
+  const totalPto = computeEntitlement(employee);
   // An employee who has not cleared the 6-month rule cannot draw down yet, so
   // their remaining balance reads 0 until their eligibility date passes.
   const daysRemaining = eligible ? round(totalPto - daysUsed) : 0;

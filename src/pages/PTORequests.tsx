@@ -138,7 +138,16 @@ export function PTORequestsPage() {
               <Download size={15} /> Export CSV
             </Button>
           )}
-          <Button size="sm" onClick={() => setFileLeaveOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => setFileLeaveOpen(true)}
+            disabled={!isAdmin && !balances[currentUser.id]?.eligible}
+            title={
+              !isAdmin && !balances[currentUser.id]?.eligible
+                ? 'You are not yet eligible for PTO.'
+                : undefined
+            }
+          >
             <FilePlus2 size={15} /> File a Leave
           </Button>
           {isManagement && (
