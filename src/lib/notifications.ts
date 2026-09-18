@@ -50,7 +50,10 @@
  *   3. Default, for now: `routing.willEmail` and `routing.princesEmail`
  *      together, sourced from the `pto_settings` table.
  * Princes is cc'd ("Cc") whenever she isn't already a "To" approver — she's
- * a primary approver only via the default pair in (3), never otherwise.
+ * a primary approver only via the default pair in (3), never otherwise. The
+ * filer is also cc'd on their own submission (unless they're somehow their
+ * own approver), so they have a record it went out immediately — separate
+ * from the "reviewed" notification they get later once it's actioned.
  * See `lib/supabaseMappers.ts#loadApproverRouting`, loaded once at startup
  * by `AppContext` and passed into the builders below.
  *
@@ -140,15 +143,19 @@ export function buildNewRequestNotification(
 ): NotificationPayload {
   const employee = employees.find((e) => e.id === request.employeeId);
   const to = newRequestApprovers(employee, employees, routing);
+  const isToAlready = (email: string) => to.some((e) => e.toLowerCase() === email.toLowerCase());
   return {
     id: uid('ntf'),
     kind: 'new-request',
     requestId: request.id,
     to,
-    // Princes is cc'd unless she's already a primary approver above.
-    cc: to.some((email) => email.toLowerCase() === routing.princesEmail.toLowerCase())
-      ? []
-      : [routing.princesEmail],
+    cc: [
+      // Princes is cc'd unless she's already a primary approver above.
+      ...(isToAlready(routing.princesEmail) ? [] : [routing.princesEmail]),
+      // The filer is cc'd on their own submission so they have a record it
+      // went out, separate from the "reviewed" notification they get later.
+      ...(employee && !isToAlready(employee.email) ? [employee.email] : []),
+    ],
     subject: `New leave request pending review — ${employee?.name ?? 'Unknown'} (${request.id})`,
     sentAt: new Date().toISOString(),
     data: {
