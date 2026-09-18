@@ -104,7 +104,7 @@
 
 import { formatDateRange, formatDays, uid } from './utils';
 import type { ApproverRouting } from './supabaseMappers';
-import type { Employee, PTORequest } from '@/types';
+import type { Employee, PayStatus, PTORequest, PTOStatus } from '@/types';
 
 export type NotificationKind =
   | 'new-request'
@@ -298,6 +298,46 @@ export function buildReviewedNotification(
       adminComment: adminComment || '',
       requestId: request.id,
       requestUrl: `${window.location.origin}/requests/${request.id}`,
+    },
+  };
+}
+
+/**
+ * Same email as `buildReviewedNotification`, built from a `pto_consume_action_token`
+ * outcome instead of a loaded `PTORequest`/`Employee[]` — used by the public
+ * `/respond` page (`pages/EmailAction.tsx`), which acts on a signed token
+ * alone and never loads `AppContext`'s app state. See the "APPROVE/REJECT
+ * DIRECTLY FROM THE EMAIL" note above: consuming the token only updates the
+ * database (via the same `pto_approve_request`/`pto_reject_request` RPCs the
+ * in-app buttons use) — nothing there emails the filer, so the page that
+ * consumed the token is responsible for sending this itself.
+ */
+export function buildReviewedNotificationFromToken(outcome: {
+  requestId: string;
+  status: PTOStatus;
+  leaveType: string;
+  startDate: string;
+  endDate: string | null;
+  employeeEmail: string | null;
+  payStatus: PayStatus | null;
+}, adminName: string, adminComment?: string): NotificationPayload {
+  return {
+    id: uid('ntf'),
+    kind: 'request-reviewed',
+    requestId: outcome.requestId,
+    to: outcome.employeeEmail ? [outcome.employeeEmail] : [],
+    cc: [],
+    subject: `Your PTO request was ${outcome.status.toLowerCase()} — ${outcome.requestId}`,
+    sentAt: new Date().toISOString(),
+    data: {
+      dates: formatDateRange(outcome.startDate, outcome.endDate ?? undefined),
+      leaveType: outcome.leaveType,
+      payStatus: outcome.payStatus ?? '',
+      status: outcome.status,
+      adminName,
+      adminComment: adminComment || '',
+      requestId: outcome.requestId,
+      requestUrl: `${window.location.origin}/requests/${outcome.requestId}`,
     },
   };
 }

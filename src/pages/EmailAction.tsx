@@ -4,7 +4,8 @@ import { Check, CircleSlash, Clock3, Mail, ShieldAlert } from 'lucide-react';
 import { LogoLockup } from '@/components/layout/Logo';
 import { Button } from '@/components/ui/Button';
 import { Field, Textarea } from '@/components/ui/Field';
-import { consumeActionToken, resolveActionToken, type TokenResolution } from '@/lib/supabaseActions';
+import { consumeActionToken, logNotification, resolveActionToken, type TokenResolution } from '@/lib/supabaseActions';
+import { buildReviewedNotificationFromToken, sendNotification } from '@/lib/notifications';
 import { formatDateRange, formatDays } from '@/lib/utils';
 
 /**
@@ -40,8 +41,32 @@ export function EmailActionPage() {
     setSubmitting(true);
     setError('');
     try {
+      // `resolution.valid` (checked before this button is even rendered) means
+      // this token hadn't been actioned yet, so this call is the one that
+      // actually performs the transition — consuming it only updates the
+      // database (see notifications.ts), so this page must send the filer's
+      // "reviewed" email itself.
+      const wasFreshAction = resolution?.valid === true;
       const outcome = await consumeActionToken(token, reason.trim() || undefined);
       setResult(outcome);
+      if (wasFreshAction && (outcome.status === 'Approved' || outcome.status === 'Rejected')) {
+        const notification = sendNotification(
+          buildReviewedNotificationFromToken(
+            {
+              requestId: outcome.requestId ?? '',
+              status: outcome.status,
+              leaveType: outcome.leaveType ?? '',
+              startDate: outcome.startDate ?? '',
+              endDate: outcome.endDate,
+              employeeEmail: outcome.employeeEmail,
+              payStatus: outcome.payStatus,
+            },
+            'Email link',
+            outcome.status === 'Rejected' ? reason.trim() || 'Rejected via email.' : undefined,
+          ),
+        );
+        logNotification(notification);
+      }
     } catch {
       setError('Something went wrong submitting your response. Please try again.');
     } finally {

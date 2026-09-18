@@ -412,7 +412,9 @@ returns table (
   start_date date,
   end_date date,
   days numeric,
-  status pto_status
+  status pto_status,
+  employee_email text,
+  pay_status pto_pay_status
 )
 language plpgsql
 security definer
@@ -423,16 +425,18 @@ declare
   v_tok pto_action_tokens;
   v_req pto_requests;
   v_emp_name text;
+  v_emp_email text;
 begin
   select * into v_tok from pto_action_tokens t where t.token_hash = v_hash;
   if not found then
     return query select false, 'not_found', null::pto_token_action, null::text, null::text,
-      null::pto_leave_type, null::date, null::date, null::numeric, null::pto_status;
+      null::pto_leave_type, null::date, null::date, null::numeric, null::pto_status,
+      null::text, null::pto_pay_status;
     return;
   end if;
 
   select * into v_req from pto_requests r where r.id = v_tok.request_id;
-  select e.name into v_emp_name from pto_employees e where e.id = v_req.employee_id;
+  select e.name, e.email into v_emp_name, v_emp_email from pto_employees e where e.id = v_req.employee_id;
 
   return query select
     (v_tok.used_at is null and v_tok.expires_at >= now() and v_req.status = 'Pending'),
@@ -443,7 +447,7 @@ begin
       else 'ok'
     end,
     v_tok.action, v_req.id, v_emp_name, v_req.leave_type, v_req.start_date, v_req.end_date,
-    v_req.days, v_req.status;
+    v_req.days, v_req.status, v_emp_email, v_req.pay_status;
 end;
 $$;
 
@@ -465,7 +469,9 @@ returns table (
   start_date date,
   end_date date,
   days numeric,
-  status pto_status
+  status pto_status,
+  employee_email text,
+  pay_status pto_pay_status
 )
 language plpgsql
 security definer

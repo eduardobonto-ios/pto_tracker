@@ -114,6 +114,8 @@ export interface TokenResolution {
   endDate: string | null;
   days: number | null;
   status: PTORequest['status'] | null;
+  employeeEmail: string | null;
+  payStatus: PTORequest['payStatus'] | null;
 }
 
 function mapTokenRow(row: Record<string, unknown>): TokenResolution {
@@ -128,6 +130,8 @@ function mapTokenRow(row: Record<string, unknown>): TokenResolution {
     endDate: (row.end_date as string) ?? null,
     days: row.days != null ? Number(row.days) : null,
     status: (row.status as PTORequest['status']) ?? null,
+    employeeEmail: (row.employee_email as string) ?? null,
+    payStatus: (row.pay_status as PTORequest['payStatus']) ?? null,
   };
 }
 
