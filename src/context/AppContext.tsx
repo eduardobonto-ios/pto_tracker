@@ -118,7 +118,8 @@ interface AppContextValue {
   /** Employee cancelling their own request (or an admin on their behalf). Keeps the record, just changes its status. */
   cancelRequest: (id: string, reason?: string) => void;
 
-  createAccount: (input: NewAccountInput) => void;
+  /** Returns an error message on failure, or null on success. */
+  createAccount: (input: NewAccountInput) => Promise<string | null>;
   /** Admin-initiated reset — sets the real password directly, no current-password check. */
   resetPassword: (accountId: string, newPassword: string) => void;
   revokeAccess: (accountId: string) => void;
@@ -321,10 +322,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const createAccount = useCallback(
-    (input: NewAccountInput) => {
+    async (input: NewAccountInput): Promise<string | null> => {
       const employeeId = uid('emp');
       const accountId = uid('acct');
-      void (async () => {
+      try {
         const { error: empError } = await supabase.from('pto_employees').insert({
           id: employeeId,
           sheet_no: employees.length + 1,
@@ -387,7 +388,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
           ...prev,
         ]);
-      })().catch((err) => console.error('[PTO Tracker] failed to create account:', err));
+        return null;
+      } catch (err) {
+        console.error('[PTO Tracker] failed to create account:', err);
+        return 'Something went wrong creating the account. Please try again.';
+      }
     },
     [employees.length],
   );
@@ -427,16 +432,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
-  const deleteAccount = useCallback((accountId: string) => {
-    setAccounts((prev) => prev.filter((a) => a.id !== accountId));
-    void supabase
-      .from('pto_accounts')
-      .delete()
-      .eq('id', accountId)
-      .then(({ error }) => {
+  const deleteAccount = useCallback(
+    (accountId: string) => {
+      const employeeId = accounts.find((a) => a.id === accountId)?.employeeId;
+      setAccounts((prev) => prev.filter((a) => a.id !== accountId));
+      if (employeeId) {
+        setEmployees((prev) => prev.filter((e) => e.id !== employeeId));
+      }
+      void (async () => {
+        // Delete the linked employee row first (its email has a unique
+        // constraint) so the email is free to reuse for a new account —
+        // this also cascades to that employee's pto_requests.
+        if (employeeId) {
+          const { error } = await supabase.from('pto_employees').delete().eq('id', employeeId);
+          if (error) console.error('[PTO Tracker] failed to delete employee record:', error);
+        }
+        const { error } = await supabase.from('pto_accounts').delete().eq('id', accountId);
         if (error) console.error('[PTO Tracker] failed to delete account:', error);
-      });
-  }, []);
+      })();
+    },
+    [accounts],
+  );
 
   if (loading) {
     return <FullScreenNotice title="Loading Valveman PTO Tracker…" />;

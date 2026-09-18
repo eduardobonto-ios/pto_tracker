@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, KeyRound, RefreshCw, UserPlus } from 'lucide-react';
+import { AlertTriangle, Check, Copy, KeyRound, RefreshCw, UserPlus } from 'lucide-react';
 import { Field, Input, Select } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
 import { useApp } from '@/context/AppContext';
@@ -37,6 +37,8 @@ export function useAccountCreationForm() {
   const [copied, setCopied] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [created, setCreated] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   async function copyPassword() {
     try {
@@ -48,7 +50,7 @@ export function useAccountCreationForm() {
     }
   }
 
-  function submit() {
+  async function submit() {
     const e: Record<string, string> = {};
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Enter a valid work email.';
     else if (accounts.some((a) => a.email.toLowerCase() === email.trim().toLowerCase()))
@@ -57,10 +59,13 @@ export function useAccountCreationForm() {
     if (!hireDate) e.hireDate = 'A hire date is required — it drives PTO eligibility.';
     if (!allowance || Number(allowance) < 0) e.allowance = 'Enter a valid number of days.';
     setErrors(e);
+    setSubmitError(null);
     if (Object.keys(e).length) return;
 
-    createAccount({
-      email: email.trim(),
+    setSubmitting(true);
+    const emailSubmitted = email.trim();
+    const error = await createAccount({
+      email: emailSubmitted,
       fullName: fullName.trim(),
       appRole,
       jobTitle: jobTitle.trim(),
@@ -69,8 +74,14 @@ export function useAccountCreationForm() {
       annualPtoAllowance: Number(allowance),
       tempPassword: password,
     });
+    setSubmitting(false);
 
-    setCreated(email.trim());
+    if (error) {
+      setSubmitError(error);
+      return;
+    }
+
+    setCreated(emailSubmitted);
     setEmail('');
     setFullName('');
     setJobTitle('');
@@ -103,6 +114,8 @@ export function useAccountCreationForm() {
     copyPassword,
     errors,
     created,
+    submitting,
+    submitError,
     submit,
   };
 }
@@ -169,7 +182,7 @@ export function AccountCreationFields({ f }: { f: AccountCreationFormState }) {
           <Input type="date" value={f.hireDate} onChange={(e) => f.setHireDate(e.target.value)} />
         </Field>
         <Field
-          label="Annual PTO allowance (legacy)"
+          label="Annual PTO allowance"
           required
           error={f.errors.allowance}
           help="PTO balances are now calculated automatically from Hire Date — this value is kept for record-keeping only and no longer drives the balance."
@@ -229,6 +242,12 @@ export function AccountCreationFields({ f }: { f: AccountCreationFormState }) {
           with them directly.
         </div>
       )}
+
+      {f.submitError && (
+        <div className="flex items-center gap-2 rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-[13px] font-medium text-danger-700">
+          <AlertTriangle size={16} /> {f.submitError}
+        </div>
+      )}
     </div>
   );
 }
@@ -236,8 +255,8 @@ export function AccountCreationFields({ f }: { f: AccountCreationFormState }) {
 /** The submit button — kept separate so a modal can pin it in its sticky footer. */
 export function AccountCreationSubmitAction({ f }: { f: AccountCreationFormState }) {
   return (
-    <Button onClick={f.submit}>
-      <UserPlus size={16} /> Create Account
+    <Button onClick={f.submit} disabled={f.submitting}>
+      <UserPlus size={16} /> {f.submitting ? 'Creating…' : 'Create Account'}
     </Button>
   );
 }
