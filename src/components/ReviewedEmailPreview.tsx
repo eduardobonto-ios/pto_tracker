@@ -53,6 +53,7 @@ export function ReviewedEmailPreview({ request }: { request: PTORequest }) {
                 value={formatDateRange(request.startDate, request.endDate)}
               />
               <Line emoji="🏷" label="Leave Type" value={request.leaveType} />
+              <Line emoji="💰" label="Pay Status" value={request.payStatus} />
               <Line
                 emoji="⏱"
                 label="Duration"

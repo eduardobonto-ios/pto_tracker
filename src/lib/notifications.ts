@@ -20,14 +20,18 @@
  *   2. Create two templates and set each one's "To Email" field to
  *      {{to_email}}, and its "Cc" field to {{cc_email}}:
  *        - "New request" template — merge fields available: employeeName,
- *          employeeEmail, department, leaveType, startDate, endDate, days,
- *          reason, requestId, requestUrl, approveUrl, rejectUrl, to_email,
- *          cc_email.
+ *          employeeEmail, department, leaveType, payStatus, startDate,
+ *          endDate, days, reason, requestId, requestUrl, approveUrl,
+ *          rejectUrl, to_email, cc_email.
  *          Add two buttons/links using approveUrl/rejectUrl so the
  *          approver can act without opening the app — see the "APPROVE/
- *          REJECT DIRECTLY FROM THE EMAIL" note below.
+ *          REJECT DIRECTLY FROM THE EMAIL" note below. `payStatus` is
+ *          "Paid" or "Unpaid" — see `PTORequestForm.tsx#useLeaveRequestForm`
+ *          for how it's derived (leave type, eligibility, and remaining
+ *          balance all factor in, so a Vacation Leave request can still
+ *          come through as Unpaid).
  *        - "Request reviewed" template — merge fields available: dates,
- *          leaveType, status, adminName, adminComment, requestId,
+ *          leaveType, payStatus, status, adminName, adminComment, requestId,
  *          requestUrl, to_email, cc_email
  *   3. Copy the Service ID, both Template IDs, and the Public Key into
  *      `.env` under the names above, then restart `npm run dev`.
@@ -152,6 +156,7 @@ export function buildNewRequestNotification(
       employeeEmail: employee?.email ?? '',
       department: employee?.department ?? '—',
       leaveType: request.leaveType,
+      payStatus: request.payStatus,
       startDate: request.startDate,
       endDate: request.endDate,
       days: formatDays(request.days),
@@ -182,6 +187,7 @@ export function buildReviewedNotification(
     data: {
       dates: formatDateRange(request.startDate, request.endDate),
       leaveType: request.leaveType,
+      payStatus: request.payStatus,
       status: request.status,
       adminName,
       adminComment: adminComment || '',

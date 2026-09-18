@@ -16,6 +16,7 @@ import {
   PTO_STATUSES,
   type DurationType,
   type LeaveType,
+  type PayStatus,
   type PTOStatus,
 } from '@/types';
 
@@ -103,7 +104,6 @@ export function useLeaveRequestForm({
   );
 
   const selectedEmployee = employees.find((e) => e.id === form.employeeId) ?? currentUser;
-  const payStatus = form.leaveType ? defaultPayStatus(form.leaveType) : 'Paid';
 
   const selectedBalance = balances[selectedEmployee.id];
   const eligible = selectedBalance?.eligible ?? true;
@@ -112,13 +112,21 @@ export function useLeaveRequestForm({
   const daysAvailable = selectedBalance
     ? round(selectedBalance.daysRemaining - selectedBalance.pendingDays)
     : Infinity;
+  const hasSufficientBalance = eligible && days <= daysAvailable;
+
+  // Not-yet-eligible and out-of-balance requests are still allowed through —
+  // they're just automatically filed as Unpaid instead of being blocked, so
+  // the leave type's own default only applies once eligibility and balance
+  // both check out.
+  const payStatus: PayStatus = !hasSufficientBalance
+    ? 'Unpaid'
+    : form.leaveType
+      ? defaultPayStatus(form.leaveType)
+      : 'Paid';
 
   function validate() {
     const e: Record<string, string> = {};
     if (!form.employeeId) e.employeeId = 'Select a team member.';
-    if (!eligible) {
-      e.employeeId = `${selectedEmployee.name} is not yet eligible for PTO (6 months of employment required).`;
-    }
     if (!form.leaveType) e.leaveType = 'Choose a leave type.';
     if (!form.startDate) e.startDate = 'A start date is required.';
     if (form.endDate && form.endDate < form.startDate)
@@ -129,11 +137,6 @@ export function useLeaveRequestForm({
     if (!form.coverage.trim()) e.coverage = 'Tell us who covers during your absence.';
     if (form.duration === 'Custom Hours' && totalHours <= 0)
       e.startTime = 'Enter a valid start and end time.';
-    if (eligible && payStatus === 'Paid' && days > daysAvailable) {
-      e.days = `This request is ${formatDays(days)} day(s), which exceeds the ${formatDays(
-        Math.max(daysAvailable, 0),
-      )} day(s) remaining once other pending requests are counted.`;
-    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -183,6 +186,7 @@ export function useLeaveRequestForm({
     payStatus,
     eligible,
     daysAvailable,
+    hasSufficientBalance,
     reset,
     openReview,
     confirmSubmit,
@@ -209,6 +213,8 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
     payStatus,
     selectedEmployee,
     eligible,
+    hasSufficientBalance,
+    daysAvailable,
   } = f;
   const isHalfDayLeave = form.leaveType === 'Half Day Leave';
   const durationOptions = isHalfDayLeave
@@ -220,7 +226,7 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
       <Field
         label="Team member"
         required
-        error={!eligible ? undefined : errors.employeeId}
+        error={errors.employeeId}
         help={isAdmin ? 'As an admin you may file on behalf of another team member.' : 'Locked to your own account.'}
       >
         <Select
@@ -240,8 +246,9 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
         <div className="flex items-start gap-2.5 rounded-xl border border-warning-100 bg-warning-50 p-3.5">
           <Info size={16} className="mt-0.5 shrink-0 text-warning-600" />
           <p className="text-[12.5px] leading-relaxed text-warning-700">
-            {errors.employeeId ??
-              `${selectedEmployee.name} is not yet eligible for PTO — 6 months of employment are required before leave can be filed. Submitting is disabled until then.`}
+            {selectedEmployee.name} is not yet eligible for PTO — 6 months of employment are
+            required. This request can still be filed, but will be charged as{' '}
+            <strong className="font-semibold">Unpaid</strong>.
           </p>
         </div>
       )}
@@ -303,10 +310,15 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
         <PillGroup options={durationOptions} value={form.duration} onChange={(v) => set('duration', v)} />
       </Field>
 
-      {errors.days && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-danger-100 bg-danger-50 p-3.5">
-          <Info size={16} className="mt-0.5 shrink-0 text-danger-600" />
-          <p className="text-[12.5px] leading-relaxed text-danger-700">{errors.days}</p>
+      {eligible && !hasSufficientBalance && days > 0 && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-warning-100 bg-warning-50 p-3.5">
+          <Info size={16} className="mt-0.5 shrink-0 text-warning-600" />
+          <p className="text-[12.5px] leading-relaxed text-warning-700">
+            This request is {formatDays(days)} day(s), which exceeds the{' '}
+            {formatDays(Math.max(daysAvailable, 0))} day(s) remaining once other pending requests
+            are counted. It can still be filed, but will be charged as{' '}
+            <strong className="font-semibold">Unpaid</strong>.
+          </p>
         </div>
       )}
 
@@ -378,11 +390,7 @@ export function LeaveRequestSubmitActions({ f }: { f: LeaveRequestFormState }) {
       <Button variant="secondary" onClick={f.reset}>
         Clear
       </Button>
-      <Button
-        onClick={f.openReview}
-        disabled={!f.eligible}
-        title={f.eligible ? undefined : `${f.selectedEmployee.name} is not yet eligible for PTO.`}
-      >
+      <Button onClick={f.openReview}>
         <Send size={15} /> Submit Request
       </Button>
     </>
