@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Field, Input } from '@/components/ui/Field';
-import { LogoMark, LogoLockup } from '@/components/layout/Logo';
+import { LogoLockup } from '@/components/layout/Logo';
 import { useApp } from '@/context/AppContext';
 
 export function LoginPage() {
@@ -69,13 +69,9 @@ export function LoginPage() {
       {/* Form panel */}
       <div className="flex flex-1 items-center justify-center bg-canvas px-5 py-12 sm:px-8">
         <div className="w-full max-w-[420px]">
-          <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <LogoMark className="h-10 w-10 text-navy-900" />
-            <div className="leading-none">
-              <p className="text-[15px] font-bold tracking-[0.02em] text-navy-900">VALVEMAN</p>
-              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-600">
-                PTO Tracker
-              </p>
+          <div className="mb-8 flex items-center justify-center lg:hidden">
+            <div className="rounded-2xl bg-navy-900 px-6 py-4">
+              <LogoLockup className="h-10" />
             </div>
           </div>
 
