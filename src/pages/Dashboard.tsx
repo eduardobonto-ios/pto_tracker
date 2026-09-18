@@ -54,13 +54,7 @@ export function DashboardPage() {
           : `Your PTO at a glance · ${currentUser.department}`
       }
       actions={
-        <Button
-          size="sm"
-          onClick={() => navigate('/file-a-leave')}
-          className="hidden sm:inline-flex"
-          disabled={!isAdmin && !myBalance?.eligible}
-          title={!isAdmin && !myBalance?.eligible ? 'You are not yet eligible for PTO.' : undefined}
-        >
+        <Button size="sm" onClick={() => navigate('/file-a-leave')} className="hidden sm:inline-flex">
           <FilePlus2 size={15} /> File a Leave
         </Button>
       }
