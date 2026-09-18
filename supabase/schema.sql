@@ -495,9 +495,12 @@ begin
 
   update pto_action_tokens set used_at = now() where id = v_tok.id;
   -- Invalidate the sibling token for this request (the other action) so it
-  -- can't be actioned later once one side has already been chosen.
-  update pto_action_tokens set used_at = now()
-  where request_id = v_req.id and used_at is null;
+  -- can't be actioned later once one side has already been chosen. `t.` is
+  -- required here — this function's own `request_id` OUT parameter (from
+  -- `returns table (...)`) is otherwise ambiguous with the column of the
+  -- same name, which PL/pgSQL rejects outright (42702).
+  update pto_action_tokens t set used_at = now()
+  where t.request_id = v_req.id and t.used_at is null;
 
   if v_tok.action = 'approve' then
     perform pto_approve_request(v_req.id, p_actor_name, p_reason);
