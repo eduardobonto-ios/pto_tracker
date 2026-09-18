@@ -12,6 +12,7 @@ import {
   buildCancelledNotification,
   buildNewRequestNotification,
   buildReviewedNotification,
+  buildSubmittedNotification,
   sendNotification,
   type NotificationPayload,
 } from '@/lib/notifications';
@@ -282,6 +283,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setNotifications((prev) => [sent, ...prev]);
         logNotification(sent);
       }
+
+      // Separate, link-free confirmation to the filer — never cc'd on the
+      // approver notice above, since that one carries live action links.
+      const confirmation = sendNotification(buildSubmittedNotification(request, employees));
+      setNotifications((prev) => [confirmation, ...prev]);
+      logNotification(confirmation);
 
       return request;
     },

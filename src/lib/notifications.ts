@@ -14,11 +14,18 @@
  *   VITE_EMAILJS_NEW_REQUEST_TEMPLATE_ID
  *   VITE_EMAILJS_REVIEWED_TEMPLATE_ID
  *   VITE_EMAILJS_CANCELLED_TEMPLATE_ID
+ *   VITE_EMAILJS_SUBMITTED_TEMPLATE_ID
+ * A kind with no template ID configured just fails that one send silently
+ * (see `sendViaEmailJs` — `console.info`/`console.error` still log it) —
+ * nothing throws, so it's easy to miss that e.g. cancellation email was
+ * never actually wired up. If a kind you expect to be live isn't arriving,
+ * check its env var is set in every deploy target (Vercel included — local
+ * `.env` doesn't cover that), not just that EmailJS itself is configured.
  *
  * Setup on emailjs.com:
  *   1. Create a free account, add an Email Service (connect Gmail/Workspace
  *      via OAuth) — this is the one-time step that replaces SMTP entirely.
- *   2. Create three templates and set each one's "To Email" field to
+ *   2. Create four templates and set each one's "To Email" field to
  *      {{to_email}}, and its "Cc" field to {{cc_email}}:
  *        - "New request" template — merge fields available: employeeName,
  *          employeeEmail, department, leaveType, payStatus, startDate,
@@ -30,7 +37,9 @@
  *          "Paid" or "Unpaid" — see `PTORequestForm.tsx#useLeaveRequestForm`
  *          for how it's derived (leave type, eligibility, and remaining
  *          balance all factor in, so a Vacation Leave request can still
- *          come through as Unpaid).
+ *          come through as Unpaid). This template — and only this one —
+ *          contains live approve/reject links, which is exactly why the
+ *          filer is never on its "To"/"Cc" (see FILER NOTIFICATIONS below).
  *        - "Request reviewed" template — merge fields available: dates,
  *          leaveType, payStatus, status, adminName, adminComment, requestId,
  *          requestUrl, to_email, cc_email
@@ -40,7 +49,11 @@
  *          requestUrl, to_email, cc_email. Sent when a Pending or Approved
  *          request is cancelled — see the CANCELLATION note below for who
  *          receives it.
- *   3. Copy the Service ID, all three Template IDs, and the Public Key into
+ *        - "Request submitted" template — merge fields available: dates,
+ *          leaveType, payStatus, days, requestId, requestUrl, to_email.
+ *          Sent to the filer only, no action links — see FILER
+ *          NOTIFICATIONS below.
+ *   3. Copy the Service ID, all four Template IDs, and the Public Key into
  *      `.env` under the names above, then restart `npm run dev`.
  *
  * Leaving any of those unset keeps today's behavior: nothing is sent, the
@@ -57,18 +70,26 @@
  *   3. Default, for now: `routing.willEmail` and `routing.princesEmail`
  *      together, sourced from the `pto_settings` table.
  * Princes is cc'd ("Cc") whenever she isn't already a "To" approver — she's
- * a primary approver only via the default pair in (3), never otherwise. The
- * filer is also cc'd on their own submission (unless they're somehow their
- * own approver), so they have a record it went out immediately — separate
- * from the "reviewed" notification they get later once it's actioned.
+ * a primary approver only via the default pair in (3), never otherwise.
  * See `lib/supabaseMappers.ts#loadApproverRouting`, loaded once at startup
  * by `AppContext` and passed into the builders below.
  *
- * CANCELLATION — `buildCancelledNotification` reuses the exact same "To"/
- * "Cc" resolution as the new-request notification above (the approver
- * route, not `request.reviewedBy`), so the same people who were or would
- * have been asked to review the request also hear when it's pulled back —
- * whether it was still Pending or already Approved when cancelled.
+ * FILER NOTIFICATIONS — the filer is never on the new-request email's "To"
+ * or "Cc", even though that's the notice for *their* request: EmailJS sends
+ * one identical body to every To/Cc address on a given call, and the
+ * new-request email carries live, single-use approve/reject links meant
+ * only for the approver — cc'ing the filer on it would hand them a working
+ * self-approve button. Instead `AppContext.submitRequest` separately sends
+ * `buildSubmittedNotification`, a plain confirmation with no action links,
+ * to the filer alone. The filer *is* cc'd on `buildCancelledNotification`
+ * below, since that one never carries action links.
+ *
+ * CANCELLATION — `buildCancelledNotification` reuses the exact same "To"
+ * resolution as the new-request notification above (the approver route,
+ * not `request.reviewedBy`), so the same people who were or would have
+ * been asked to review the request also hear when it's pulled back —
+ * whether it was still Pending or already Approved when cancelled. Cc adds
+ * Princes (if not already To) and the filer — see FILER NOTIFICATIONS.
  *
  * APPROVE/REJECT DIRECTLY FROM THE EMAIL — now implemented. `AppContext`
  * mints a single-use, expiring, signed action token per action (via the
@@ -85,7 +106,11 @@ import { formatDateRange, formatDays, uid } from './utils';
 import type { ApproverRouting } from './supabaseMappers';
 import type { Employee, PTORequest } from '@/types';
 
-export type NotificationKind = 'new-request' | 'request-reviewed' | 'request-cancelled';
+export type NotificationKind =
+  | 'new-request'
+  | 'request-reviewed'
+  | 'request-cancelled'
+  | 'request-submitted';
 
 export interface NotificationPayload {
   id: string;
@@ -106,6 +131,7 @@ const EMAILJS_TEMPLATE_IDS: Record<NotificationKind, string | undefined> = {
   'new-request': import.meta.env.VITE_EMAILJS_NEW_REQUEST_TEMPLATE_ID,
   'request-reviewed': import.meta.env.VITE_EMAILJS_REVIEWED_TEMPLATE_ID,
   'request-cancelled': import.meta.env.VITE_EMAILJS_CANCELLED_TEMPLATE_ID,
+  'request-submitted': import.meta.env.VITE_EMAILJS_SUBMITTED_TEMPLATE_ID,
 };
 
 /** Whether enough EmailJS config is present to attempt a real send. */
@@ -132,7 +158,9 @@ function newRequestApprovers(
   const candidates =
     jobTitleManager ? [jobTitleManager]
     : departmentManager ? [departmentManager]
-    : [routing.willEmail, routing.princesEmail];
+    // Both default slots can point at the same address (e.g. while testing
+    // with a single inbox), so dedupe rather than emailing them twice.
+    : dedupeEmails([routing.willEmail, routing.princesEmail]);
 
   const filtered = candidates.filter((email) => !isSelf(email));
   if (filtered.length > 0) return filtered;
@@ -143,17 +171,35 @@ function newRequestApprovers(
   return fallback.length > 0 ? fallback : [routing.princesEmail];
 }
 
+function dedupeEmails(emails: string[]): string[] {
+  const seen = new Set<string>();
+  return emails.filter((email) => {
+    const key = email.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /**
  * "Cc" list for a notification already addressed ("To") to the approver
- * route: Princes, unless she's already a primary approver, plus the filer
- * themself so they have a record it went out. Shared by the new-request and
- * cancellation notifications, which use identical routing.
+ * route: Princes, unless she's already a primary approver, plus — only when
+ * `includeFiler` is true — the filer themself, so they have a record it went
+ * out. `includeFiler` must stay false for any notification that can carry
+ * approve/reject action links (see FILER NOTIFICATIONS in the file header).
+ * Shared by the new-request and cancellation notifications, which use
+ * identical "To" routing.
  */
-function approverCc(to: string[], employee: Employee | undefined, routing: ApproverRouting): string[] {
+function approverCc(
+  to: string[],
+  employee: Employee | undefined,
+  routing: ApproverRouting,
+  includeFiler: boolean,
+): string[] {
   const isToAlready = (email: string) => to.some((e) => e.toLowerCase() === email.toLowerCase());
   return [
     ...(isToAlready(routing.princesEmail) ? [] : [routing.princesEmail]),
-    ...(employee && !isToAlready(employee.email) ? [employee.email] : []),
+    ...(includeFiler && employee && !isToAlready(employee.email) ? [employee.email] : []),
   ];
 }
 
@@ -162,7 +208,9 @@ function approverCc(to: string[], employee: Employee | undefined, routing: Appro
  * Pure/synchronous — does not mint action tokens. `AppContext.submitRequest`
  * mints `approveUrl`/`rejectUrl` separately and adds them to `data` before
  * sending, so this can also be called repeatedly for the Email Notification
- * Preview page without spending real tokens.
+ * Preview page without spending real tokens. Never cc's the filer — see
+ * FILER NOTIFICATIONS in the file header; `buildSubmittedNotification`
+ * below is what they actually get.
  */
 export function buildNewRequestNotification(
   request: PTORequest,
@@ -176,7 +224,7 @@ export function buildNewRequestNotification(
     kind: 'new-request',
     requestId: request.id,
     to,
-    cc: approverCc(to, employee, routing),
+    cc: approverCc(to, employee, routing, false),
     subject: `New leave request pending review — ${employee?.name ?? 'Unknown'} (${request.id})`,
     sentAt: new Date().toISOString(),
     data: {
@@ -189,6 +237,35 @@ export function buildNewRequestNotification(
       endDate: request.endDate,
       days: formatDays(request.days),
       reason: request.reason || 'No additional detail provided',
+      requestId: request.id,
+      requestUrl: `${window.location.origin}/requests/${request.id}`,
+    },
+  };
+}
+
+/**
+ * Sent to the filer as confirmation that their request went out — the
+ * counterpart to `buildNewRequestNotification` above. Deliberately carries
+ * no approve/reject links (see FILER NOTIFICATIONS in the file header).
+ */
+export function buildSubmittedNotification(
+  request: PTORequest,
+  employees: Employee[],
+): NotificationPayload {
+  const employee = employees.find((e) => e.id === request.employeeId);
+  return {
+    id: uid('ntf'),
+    kind: 'request-submitted',
+    requestId: request.id,
+    to: employee ? [employee.email] : [],
+    cc: [],
+    subject: `Your PTO request has been submitted — ${request.id}`,
+    sentAt: new Date().toISOString(),
+    data: {
+      dates: formatDateRange(request.startDate, request.endDate),
+      leaveType: request.leaveType,
+      payStatus: request.payStatus,
+      days: formatDays(request.days),
       requestId: request.id,
       requestUrl: `${window.location.origin}/requests/${request.id}`,
     },
@@ -244,7 +321,7 @@ export function buildCancelledNotification(
     kind: 'request-cancelled',
     requestId: request.id,
     to,
-    cc: approverCc(to, employee, routing),
+    cc: approverCc(to, employee, routing, true),
     subject: `Leave request cancelled — ${employee?.name ?? 'Unknown'} (${request.id})`,
     sentAt: new Date().toISOString(),
     data: {

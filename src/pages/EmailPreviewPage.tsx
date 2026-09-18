@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { EmailPreview } from '@/components/EmailPreview';
 import { ReviewedEmailPreview } from '@/components/ReviewedEmailPreview';
 import { CancelledEmailPreview } from '@/components/CancelledEmailPreview';
+import { SubmittedEmailPreview } from '@/components/SubmittedEmailPreview';
 import { Card, CardBody } from '@/components/ui/Card';
 import { SectionTitle } from '@/components/ui/Misc';
 import { Select } from '@/components/ui/Field';
@@ -56,8 +57,10 @@ export function EmailPreviewPage() {
               Live sending is configured via EmailJS — this preview also reflects what was
               actually emailed. The new-request and cancellation notices both go to the
               employee's job-title or department manager, or Will &amp; Princes by default (cc
-              Princes and the filer otherwise); the new-request one also includes one-click
-              Approve/Decline links. The approved/rejected notice goes straight to the employee.
+              Princes otherwise, plus the filer on cancellation only — never on new-request,
+              which carries one-click Approve/Decline links). The filer instead gets a separate,
+              link-free confirmation the moment they submit, and the approved/rejected notice
+              goes straight to them once it's actioned.
             </p>
           </div>
         ) : (
@@ -69,10 +72,12 @@ export function EmailPreviewPage() {
               real delivery with no backend or SMTP. Once enabled, the new-request and
               cancellation notices below go to the employee's job-title or department manager
               (see the `pto_approver_routing` Supabase table), or to Will &amp; Princes by
-              default — Princes and the filer are cc'd whenever they aren't already a primary
-              approver. Approve/Decline links only appear once a request has actually been
-              submitted this session (see Approve/Decline in the card below). The
-              approved/rejected notice goes straight to the employee.
+              default — Princes is cc'd whenever she isn't already a primary approver, and the
+              filer is cc'd too but only on cancellation, never on new-request (that one carries
+              live Approve/Decline links). Approve/Decline links only appear once a request has
+              actually been submitted this session (see Approve/Decline in the card below). The
+              filer instead gets a separate, link-free confirmation right after submitting, and
+              the approved/rejected notice goes straight to them once it's actioned.
             </p>
           </div>
         )}
@@ -84,6 +89,13 @@ export function EmailPreviewPage() {
                 New request — sent to the admin/approver
               </SectionTitle>
               <EmailPreview request={request} notification={sentNotification} />
+            </div>
+
+            <div>
+              <SectionTitle className="mb-2">
+                Request submitted — sent to the filer
+              </SectionTitle>
+              <SubmittedEmailPreview request={request} />
             </div>
 
             {(request.status === 'Approved' || request.status === 'Rejected') && (
