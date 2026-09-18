@@ -109,6 +109,12 @@ interface AppContextValue {
   /** Returns an error message on failure (wrong email/password), or null on success. */
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => void;
+  /**
+   * The password just used to sign in, held only while `session ===
+   * 'must-change-password'` so the forced password-change screen doesn't
+   * have to ask the employee to re-type what they entered seconds ago.
+   */
+  knownTempPassword: string | null;
   /** Forced first-login password change. Returns an error message if `current` doesn't match, or null on success. */
   changePassword: (current: string, next: string) => Promise<string | null>;
 
@@ -134,6 +140,7 @@ const DEFAULT_USER_ID = 'emp-01';
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session>('signed-out');
+  const [knownTempPassword, setKnownTempPassword] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState(DEFAULT_USER_ID);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [requests, setRequests] = useState<PTORequest[]>([]);
@@ -195,6 +202,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const result = await verifyLoginRpc(email, password);
         if (!result) return 'Incorrect email or password.';
         setCurrentUserId(result.employeeId);
+        setKnownTempPassword(result.mustChangePassword ? password : null);
         setSession(result.mustChangePassword ? 'must-change-password' : 'signed-in');
         return null;
       } catch (err) {
@@ -205,7 +213,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const signOut = useCallback(() => setSession('signed-out'), []);
+  const signOut = useCallback(() => {
+    setSession('signed-out');
+    setKnownTempPassword(null);
+  }, []);
 
   const changePassword = useCallback(
     async (current: string, next: string): Promise<string | null> => {
@@ -217,6 +228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAccounts((prev) =>
           prev.map((a) => (a.id === account.id ? { ...a, mustChangePassword: false } : a)),
         );
+        setKnownTempPassword(null);
         setSession('signed-in');
         return null;
       } catch (err) {
@@ -488,6 +500,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notifications,
     signIn,
     signOut,
+    knownTempPassword,
     changePassword,
     submitRequest,
     approveRequest,

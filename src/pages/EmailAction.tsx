@@ -55,9 +55,7 @@ export function EmailActionPage() {
     <div className="flex min-h-screen items-center justify-center bg-canvas px-5 py-12">
       <div className="w-full max-w-[480px]">
         <div className="mb-7 flex items-center justify-center">
-          <div className="rounded-2xl bg-navy-900 px-6 py-4">
-            <LogoLockup className="h-10" />
-          </div>
+          <LogoLockup className="h-16" />
         </div>
 
         <div className="rounded-2xl border border-slateish-200/80 bg-white p-6 shadow-card sm:p-7">

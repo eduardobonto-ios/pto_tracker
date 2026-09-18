@@ -28,14 +28,13 @@ function ManagementRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Post-login landing route. Admins and Princes Aloha Gomez (the team
- * manager) land on PTO Requests; everyone else lands on File a Leave.
- * Dashboard is intentionally no longer linked here — its route/source
- * below is kept for later, just not used as a landing target.
+ * Post-login landing route — everyone lands on PTO Requests, including
+ * right after the forced first-login password change. Dashboard and File a
+ * Leave are intentionally no longer linked here — their routes/sources
+ * below are kept for later, just not used as a landing target.
  */
 function useLandingPath() {
-  const { isManagement } = useApp();
-  return isManagement ? '/requests' : '/file-a-leave';
+  return '/requests';
 }
 
 export default function App() {

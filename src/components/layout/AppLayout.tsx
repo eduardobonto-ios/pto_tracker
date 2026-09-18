@@ -34,7 +34,7 @@ export function AppLayout({
           />
           <aside className="absolute inset-y-0 left-0 flex w-[280px] animate-slide-in-right flex-col bg-navy-900">
             <div className="flex items-center justify-between px-5 py-5">
-              <LogoLockup />
+              <LogoLockup variant="dark" />
               <button
                 onClick={() => setNavOpen(false)}
                 className="rounded-lg p-1.5 text-navy-300 hover:bg-white/10 hover:text-white"

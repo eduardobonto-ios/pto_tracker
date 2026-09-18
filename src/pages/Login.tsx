@@ -34,7 +34,7 @@ export function LoginPage() {
         <div className="pointer-events-none absolute -right-16 bottom-0 h-80 w-80 rounded-full bg-accent-500/15 blur-3xl" />
 
         <div className="relative">
-          <LogoLockup className="h-16" />
+          <LogoLockup variant="dark" className="h-16" />
         </div>
 
         <div className="relative max-w-md">
@@ -70,9 +70,7 @@ export function LoginPage() {
       <div className="flex flex-1 items-center justify-center bg-canvas px-5 py-12 sm:px-8">
         <div className="w-full max-w-[420px]">
           <div className="mb-8 flex items-center justify-center lg:hidden">
-            <div className="rounded-2xl bg-navy-900 px-6 py-4">
-              <LogoLockup className="h-10" />
-            </div>
+            <LogoLockup className="h-16" />
           </div>
 
           <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Sign in</h1>

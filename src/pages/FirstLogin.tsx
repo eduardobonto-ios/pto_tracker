@@ -5,15 +5,13 @@ import { useApp } from '@/context/AppContext';
 
 /** Forced first-login password change, shown before the app becomes available. */
 export function FirstLoginPage() {
-  const { currentUser, changePassword, signOut } = useApp();
+  const { currentUser, knownTempPassword, changePassword, signOut } = useApp();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-5 py-12">
       <div className="w-full max-w-[480px]">
         <div className="mb-7 flex items-center justify-center">
-          <div className="rounded-2xl bg-navy-900 px-6 py-4">
-            <LogoLockup className="h-10" />
-          </div>
+          <LogoLockup className="h-16" />
         </div>
 
         <div className="rounded-2xl border border-slateish-200/80 bg-white p-6 shadow-card sm:p-7">
@@ -31,7 +29,7 @@ export function FirstLoginPage() {
             </div>
           </div>
 
-          <PasswordChangeForm onSubmit={changePassword} />
+          <PasswordChangeForm knownTempPassword={knownTempPassword} onSubmit={changePassword} />
         </div>
 
         <button

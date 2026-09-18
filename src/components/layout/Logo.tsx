@@ -36,10 +36,21 @@ export function LogoMark({ className }: { className?: string }) {
   );
 }
 
-export function LogoLockup({ className }: { className?: string }) {
+/**
+ * `light` (default) is the navy-on-transparent wordmark for white/light
+ * surfaces; `dark` is the original white-on-transparent version for dark
+ * surfaces like the sidebar rail and the sign-in brand panel.
+ */
+export function LogoLockup({
+  className,
+  variant = 'light',
+}: {
+  className?: string;
+  variant?: 'light' | 'dark';
+}) {
   return (
     <img
-      src="/valveXwelsford.png"
+      src={variant === 'dark' ? '/valveXwelsford.png' : '/valveXwelsford-dark.png'}
       alt="Valveman x Welsford"
       className={cn('h-20 w-auto max-w-full object-contain', className)}
     />

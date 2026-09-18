@@ -112,7 +112,7 @@ export function Sidebar({ className }: { className?: string }) {
       )}
     >
       <div className="px-5 py-5">
-        <LogoLockup />
+        <LogoLockup variant="dark" />
       </div>
       <div className="mx-3 h-px bg-white/[0.07]" />
       <div className="scroll-slim flex min-h-0 flex-1 flex-col overflow-y-auto">

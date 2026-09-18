@@ -18,8 +18,11 @@ const RULES: Rule[] = [
 
 /** Forced first-login password change. */
 export function PasswordChangeForm({
+  knownTempPassword,
   onSubmit,
 }: {
+  /** The password the employee just signed in with — skips re-asking for it when known. */
+  knownTempPassword?: string | null;
   /** Returns an error message if `current` doesn't match, or null on success. */
   onSubmit: (current: string, next: string) => Promise<string | null>;
 }) {
@@ -34,8 +37,9 @@ export function PasswordChangeForm({
   const strength = passed.filter(Boolean).length;
 
   async function submit() {
+    const currentPassword = knownTempPassword ?? temp;
     const e: Record<string, string> = {};
-    if (!temp) e.temp = 'Enter the temporary password you were given.';
+    if (!currentPassword) e.temp = 'Enter the temporary password you were given.';
     if (strength < RULES.length) e.next = 'Your new password does not meet all requirements.';
     if (next !== confirm) e.confirm = 'The two passwords do not match.';
     if (Object.keys(e).length > 0) {
@@ -43,7 +47,7 @@ export function PasswordChangeForm({
       return;
     }
     setSubmitting(true);
-    const message = await onSubmit(temp, next);
+    const message = await onSubmit(currentPassword, next);
     setSubmitting(false);
     if (message) setErrors({ temp: message });
   }
@@ -57,21 +61,29 @@ export function PasswordChangeForm({
         </p>
       </div>
 
-      <Field label="Temporary password" required error={errors.temp}>
-        <div className="relative">
-          <Lock
-            size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slateish-400"
-          />
-          <Input
-            type={show ? 'text' : 'password'}
-            value={temp}
-            onChange={(e) => setTemp(e.target.value)}
-            placeholder="The password your administrator shared"
-            className="pl-9"
-          />
-        </div>
-      </Field>
+      {knownTempPassword ? (
+        errors.temp && (
+          <p className="rounded-xl border border-warning-200 bg-warning-50 px-3.5 py-2.5 text-[12.5px] font-medium text-warning-700">
+            {errors.temp}
+          </p>
+        )
+      ) : (
+        <Field label="Temporary password" required error={errors.temp}>
+          <div className="relative">
+            <Lock
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slateish-400"
+            />
+            <Input
+              type={show ? 'text' : 'password'}
+              value={temp}
+              onChange={(e) => setTemp(e.target.value)}
+              placeholder="The password your administrator shared"
+              className="pl-9"
+            />
+          </div>
+        </Field>
+      )}
 
       <Field label="New password" required error={errors.next}>
         <div className="relative">
