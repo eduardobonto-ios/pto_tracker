@@ -3,6 +3,7 @@ import { CheckCircle2, Mail, TriangleAlert } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { EmailPreview } from '@/components/EmailPreview';
 import { ReviewedEmailPreview } from '@/components/ReviewedEmailPreview';
+import { CancelledEmailPreview } from '@/components/CancelledEmailPreview';
 import { Card, CardBody } from '@/components/ui/Card';
 import { SectionTitle } from '@/components/ui/Misc';
 import { Select } from '@/components/ui/Field';
@@ -23,6 +24,9 @@ export function EmailPreviewPage() {
   // loaded — otherwise EmailPreview falls back to a token-less rebuild.
   const sentNotification = request
     ? notifications.find((n) => n.kind === 'new-request' && n.requestId === request.id)
+    : undefined;
+  const sentCancelledNotification = request
+    ? notifications.find((n) => n.kind === 'request-cancelled' && n.requestId === request.id)
     : undefined;
 
   return (
@@ -50,10 +54,10 @@ export function EmailPreviewPage() {
             <CheckCircle2 size={15} className="shrink-0 text-success-600" />
             <p className="text-[12.5px] leading-snug text-success-700">
               Live sending is configured via EmailJS — this preview also reflects what was
-              actually emailed. The new-request notice goes to the employee's job-title or
-              department manager, or Will &amp; Princes by default (cc Princes otherwise),
-              includes one-click Approve/Decline links, and the approved/rejected notice
-              goes straight to the employee.
+              actually emailed. The new-request and cancellation notices both go to the
+              employee's job-title or department manager, or Will &amp; Princes by default (cc
+              Princes and the filer otherwise); the new-request one also includes one-click
+              Approve/Decline links. The approved/rejected notice goes straight to the employee.
             </p>
           </div>
         ) : (
@@ -62,13 +66,13 @@ export function EmailPreviewPage() {
             <p className="text-[12.5px] leading-snug text-warning-700">
               Preview only — no email is sent yet. See the browser console for the simulated
               send log, or configure EmailJS (`lib/notifications.ts` / `.env.example`) for
-              real delivery with no backend or SMTP. Once enabled, the new-request notice
-              below goes to the employee's job-title or department manager (see the
-              `pto_approver_routing` Supabase table), or to Will &amp; Princes by default —
-              Princes is cc'd whenever she isn't already a primary approver. Approve/Decline
-              links only appear once a request has actually been submitted this session (see
-              Approve/Decline in the card below). The approved/rejected notice goes straight
-              to the employee.
+              real delivery with no backend or SMTP. Once enabled, the new-request and
+              cancellation notices below go to the employee's job-title or department manager
+              (see the `pto_approver_routing` Supabase table), or to Will &amp; Princes by
+              default — Princes and the filer are cc'd whenever they aren't already a primary
+              approver. Approve/Decline links only appear once a request has actually been
+              submitted this session (see Approve/Decline in the card below). The
+              approved/rejected notice goes straight to the employee.
             </p>
           </div>
         )}
@@ -88,6 +92,15 @@ export function EmailPreviewPage() {
                   Request reviewed — sent to the employee
                 </SectionTitle>
                 <ReviewedEmailPreview request={request} />
+              </div>
+            )}
+
+            {request.status === 'Cancelled' && (
+              <div>
+                <SectionTitle className="mb-2">
+                  Request cancelled — sent to the admin/approver
+                </SectionTitle>
+                <CancelledEmailPreview request={request} notification={sentCancelledNotification} />
               </div>
             )}
           </>

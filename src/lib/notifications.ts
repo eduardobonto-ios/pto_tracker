@@ -13,11 +13,12 @@
  *   VITE_EMAILJS_PUBLIC_KEY
  *   VITE_EMAILJS_NEW_REQUEST_TEMPLATE_ID
  *   VITE_EMAILJS_REVIEWED_TEMPLATE_ID
+ *   VITE_EMAILJS_CANCELLED_TEMPLATE_ID
  *
  * Setup on emailjs.com:
  *   1. Create a free account, add an Email Service (connect Gmail/Workspace
  *      via OAuth) — this is the one-time step that replaces SMTP entirely.
- *   2. Create two templates and set each one's "To Email" field to
+ *   2. Create three templates and set each one's "To Email" field to
  *      {{to_email}}, and its "Cc" field to {{cc_email}}:
  *        - "New request" template — merge fields available: employeeName,
  *          employeeEmail, department, leaveType, payStatus, startDate,
@@ -33,7 +34,13 @@
  *        - "Request reviewed" template — merge fields available: dates,
  *          leaveType, payStatus, status, adminName, adminComment, requestId,
  *          requestUrl, to_email, cc_email
- *   3. Copy the Service ID, both Template IDs, and the Public Key into
+ *        - "Request cancelled" template — merge fields available:
+ *          employeeName, employeeEmail, department, leaveType, payStatus,
+ *          startDate, endDate, days, cancelledBy, cancelReason, requestId,
+ *          requestUrl, to_email, cc_email. Sent when a Pending or Approved
+ *          request is cancelled — see the CANCELLATION note below for who
+ *          receives it.
+ *   3. Copy the Service ID, all three Template IDs, and the Public Key into
  *      `.env` under the names above, then restart `npm run dev`.
  *
  * Leaving any of those unset keeps today's behavior: nothing is sent, the
@@ -57,6 +64,12 @@
  * See `lib/supabaseMappers.ts#loadApproverRouting`, loaded once at startup
  * by `AppContext` and passed into the builders below.
  *
+ * CANCELLATION — `buildCancelledNotification` reuses the exact same "To"/
+ * "Cc" resolution as the new-request notification above (the approver
+ * route, not `request.reviewedBy`), so the same people who were or would
+ * have been asked to review the request also hear when it's pulled back —
+ * whether it was still Pending or already Approved when cancelled.
+ *
  * APPROVE/REJECT DIRECTLY FROM THE EMAIL — now implemented. `AppContext`
  * mints a single-use, expiring, signed action token per action (via the
  * `pto_mint_action_token` Supabase RPC — only the SHA-256 hash is ever
@@ -72,7 +85,7 @@ import { formatDateRange, formatDays, uid } from './utils';
 import type { ApproverRouting } from './supabaseMappers';
 import type { Employee, PTORequest } from '@/types';
 
-export type NotificationKind = 'new-request' | 'request-reviewed';
+export type NotificationKind = 'new-request' | 'request-reviewed' | 'request-cancelled';
 
 export interface NotificationPayload {
   id: string;
@@ -92,6 +105,7 @@ const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 const EMAILJS_TEMPLATE_IDS: Record<NotificationKind, string | undefined> = {
   'new-request': import.meta.env.VITE_EMAILJS_NEW_REQUEST_TEMPLATE_ID,
   'request-reviewed': import.meta.env.VITE_EMAILJS_REVIEWED_TEMPLATE_ID,
+  'request-cancelled': import.meta.env.VITE_EMAILJS_CANCELLED_TEMPLATE_ID,
 };
 
 /** Whether enough EmailJS config is present to attempt a real send. */
@@ -130,6 +144,20 @@ function newRequestApprovers(
 }
 
 /**
+ * "Cc" list for a notification already addressed ("To") to the approver
+ * route: Princes, unless she's already a primary approver, plus the filer
+ * themself so they have a record it went out. Shared by the new-request and
+ * cancellation notifications, which use identical routing.
+ */
+function approverCc(to: string[], employee: Employee | undefined, routing: ApproverRouting): string[] {
+  const isToAlready = (email: string) => to.some((e) => e.toLowerCase() === email.toLowerCase());
+  return [
+    ...(isToAlready(routing.princesEmail) ? [] : [routing.princesEmail]),
+    ...(employee && !isToAlready(employee.email) ? [employee.email] : []),
+  ];
+}
+
+/**
  * Sent to the appropriate manager(s) when an employee files a new request.
  * Pure/synchronous — does not mint action tokens. `AppContext.submitRequest`
  * mints `approveUrl`/`rejectUrl` separately and adds them to `data` before
@@ -143,19 +171,12 @@ export function buildNewRequestNotification(
 ): NotificationPayload {
   const employee = employees.find((e) => e.id === request.employeeId);
   const to = newRequestApprovers(employee, employees, routing);
-  const isToAlready = (email: string) => to.some((e) => e.toLowerCase() === email.toLowerCase());
   return {
     id: uid('ntf'),
     kind: 'new-request',
     requestId: request.id,
     to,
-    cc: [
-      // Princes is cc'd unless she's already a primary approver above.
-      ...(isToAlready(routing.princesEmail) ? [] : [routing.princesEmail]),
-      // The filer is cc'd on their own submission so they have a record it
-      // went out, separate from the "reviewed" notification they get later.
-      ...(employee && !isToAlready(employee.email) ? [employee.email] : []),
-    ],
+    cc: approverCc(to, employee, routing),
     subject: `New leave request pending review — ${employee?.name ?? 'Unknown'} (${request.id})`,
     sentAt: new Date().toISOString(),
     data: {
@@ -198,6 +219,45 @@ export function buildReviewedNotification(
       status: request.status,
       adminName,
       adminComment: adminComment || '',
+      requestId: request.id,
+      requestUrl: `${window.location.origin}/requests/${request.id}`,
+    },
+  };
+}
+
+/**
+ * Sent to the approver route (same resolution as `buildNewRequestNotification`
+ * — see the CANCELLATION note in the file header) when a Pending or Approved
+ * request is cancelled, by the filer or by an admin on their behalf.
+ */
+export function buildCancelledNotification(
+  request: PTORequest,
+  employees: Employee[],
+  routing: ApproverRouting,
+  cancelledByName: string,
+  cancelReason?: string,
+): NotificationPayload {
+  const employee = employees.find((e) => e.id === request.employeeId);
+  const to = newRequestApprovers(employee, employees, routing);
+  return {
+    id: uid('ntf'),
+    kind: 'request-cancelled',
+    requestId: request.id,
+    to,
+    cc: approverCc(to, employee, routing),
+    subject: `Leave request cancelled — ${employee?.name ?? 'Unknown'} (${request.id})`,
+    sentAt: new Date().toISOString(),
+    data: {
+      employeeName: employee?.name ?? '—',
+      employeeEmail: employee?.email ?? '',
+      department: employee?.department ?? '—',
+      leaveType: request.leaveType,
+      payStatus: request.payStatus,
+      startDate: request.startDate,
+      endDate: request.endDate,
+      days: formatDays(request.days),
+      cancelledBy: cancelledByName,
+      cancelReason: cancelReason || 'No reason provided',
       requestId: request.id,
       requestUrl: `${window.location.origin}/requests/${request.id}`,
     },

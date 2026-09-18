@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { removeLeaveFromCalendar, syncApprovedLeaveToCalendar } from '@/lib/calendarSync';
 import {
+  buildCancelledNotification,
   buildNewRequestNotification,
   buildReviewedNotification,
   sendNotification,
@@ -328,9 +329,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         // No-op on the calendar side if this request was never approved (never had an event).
         removeLeaveFromCalendar(updated);
+        if (routing) {
+          const notification = sendNotification(
+            buildCancelledNotification(updated, employees, routing, currentUser.name, reason),
+          );
+          setNotifications((prev) => [notification, ...prev]);
+          logNotification(notification);
+        }
       })().catch((err) => console.error('[PTO Tracker] failed to cancel request:', err));
     },
-    [currentUser?.name],
+    [currentUser?.name, employees, routing],
   );
 
   const createAccount = useCallback(
