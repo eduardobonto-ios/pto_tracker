@@ -220,6 +220,10 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
   const durationOptions = isHalfDayLeave
     ? DURATION_TYPES.filter((d) => d === 'Half Day (AM)' || d === 'Half Day (PM)')
     : DURATION_TYPES;
+  const coverageSuggestions = employees
+    .filter((e) => e.active && e.id !== form.employeeId)
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b));
 
   return (
     <div className="space-y-5">
@@ -348,10 +352,17 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
 
       <Field label="Coverage / POC" required error={errors.coverage}>
         <Input
+          list="coverage-suggestions"
           value={form.coverage}
           onChange={(e) => set('coverage', e.target.value)}
           placeholder="Who covers during your absence?"
+          autoComplete="off"
         />
+        <datalist id="coverage-suggestions">
+          {coverageSuggestions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
       </Field>
 
       {isAdmin && (
