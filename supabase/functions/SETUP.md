@@ -5,20 +5,26 @@ same secrets. Both are finished in code and inert until the Entra side exists.
 
 | | Direction | Code | Graph permission | Status |
 |---|---|---|---|---|
-| **A. Org calendar overlay** | Microsoft → app | `functions/read-org-calendar`, `src/lib/orgCalendar.ts` | `Calendars.Read` | **the active one** |
-| **B. PTO push** | app → Microsoft | `functions/sync-pto-calendar`, `src/lib/calendarSync.ts` | `Calendars.ReadWrite` | built, dormant, not currently wanted |
+| **A. Org calendar overlay** | Microsoft → app | `functions/read-org-calendar`, `src/lib/orgCalendar.ts` | `Calendars.Read` | **LIVE** via a published ICS feed |
+| **B. PTO push** | app → Microsoft | `functions/sync-pto-calendar`, `src/lib/calendarSync.ts` | `Calendars.ReadWrite` | built and tested, **blocked** on admin consent |
 
 **A** shows the organisation's shared calendar (company events, holidays,
 shutdowns) on the PTO Calendar page alongside leave. It reads **one** mailbox —
-employees' personal calendars are deliberately out of scope.
+employees' personal calendars are deliberately out of scope. **This is running
+in production** off a published ICS feed (option 1 below), which needed no
+tenant admin at all.
 
-**B** writes approved leave onto a shared calendar. It is complete and tested
-against nothing; leave it switched off by simply not setting
-`MS_GRAPH_CALENDAR_USER`. Set up **A** only unless you decide otherwise.
+**B** writes approved leave onto that same calendar, so staff see who is out
+from inside Outlook and Teams. The code is finished and the duplicate-filtering
+it needs is in place, but it **cannot run until an Entra app registration
+exists with `Calendars.ReadWrite` admin-consented**. There is no ICS equivalent:
+publishing a calendar yields a read-only URL, and writing to a Microsoft mailbox
+requires an authenticated application identity that only an admin can grant.
 
-Set up A and you need `Calendars.Read` — read-only, and narrower than what B
-would need. If you later want both, the permission becomes `Calendars.ReadWrite`
-and the mailbox list grows by one.
+As of 2026-09-22 this is the project's only outstanding dependency, and it sits
+with inWorks LLC, the MSP managing the tenant. Until it lands, the integration
+is one-way (Outlook → PTO Tracker) and the team has been told that filed leave
+does not appear in Company Events.
 
 Tenant: **F.S. Welsford Company** (`fswelsford.com`)
 Supabase project ref: `wmglpvxdcehbrfcbrxzd`
