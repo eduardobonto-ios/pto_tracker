@@ -25,6 +25,48 @@ Supabase project ref: `wmglpvxdcehbrfcbrxzd`
 
 ---
 
+## Two ways to feed the overlay
+
+Integration A reads its calendar from **one of two sources**. Configure either.
+
+### Option 1 — published ICS feed (no admin, works today)
+
+Any user can publish a calendar they own and get a link. No app registration, no
+admin consent, no Exchange policy, no MSP involvement.
+
+1. In **Outlook on the web**, open **Settings → Calendar → Shared calendars**.
+2. Under **Publish a calendar**, pick the calendar, set permission to **Can view
+   all details**, and **Publish**.
+3. Copy the **ICS** link (not the HTML one).
+4. `supabase secrets set ORG_CALENDAR_ICS_URL='<the ics link>' --project-ref wmglpvxdcehbrfcbrxzd`
+5. `supabase functions deploy read-org-calendar --project-ref wmglpvxdcehbrfcbrxzd`
+
+Done. Steps 1-4 below are not needed.
+
+**Know the trade-offs.**
+- The URL is **unauthenticated** — anyone holding it can read that calendar.
+  Publish only a calendar whose contents are not sensitive (company events and
+  holidays, not anyone's personal calendar). Re-publishing issues a new URL,
+  which is how you revoke a leaked one.
+- Outlook refreshes a published feed on its own schedule, so edits can take a
+  few hours to appear. Fine for holidays; poor for same-day changes.
+- Tenant policy can disable calendar publishing (`Set-SharingPolicy`). If the
+  Publish option is missing, it is off, and Option 2 is the only route.
+- Parsing is day-granular and supports FREQ/INTERVAL/COUNT/UNTIL/BYDAY/EXDATE.
+  Exotic rules (BYSETPOS, nth-weekday-of-month) yield only the first occurrence.
+  See `read-org-calendar/ics.ts`; tests in `ics.test.ts`:
+  `deno run supabase/functions/read-org-calendar/ics.test.ts`
+
+### Option 2 — Microsoft Graph (needs admin, better result)
+
+Authenticated, immediate updates, no public URL. Needs an Entra app registration
+and tenant admin consent — steps 1-5 below. Prefer this as the end state.
+
+Setting `ORG_CALENDAR_ICS_URL` takes precedence, so you can start on Option 1
+today and switch to Graph later by unsetting it. No code change either way.
+
+---
+
 ## Secrets
 
 | Secret | Used by | Value |
@@ -32,7 +74,8 @@ Supabase project ref: `wmglpvxdcehbrfcbrxzd`
 | `MS_GRAPH_TENANT_ID` | both | Entra directory (tenant) ID |
 | `MS_GRAPH_CLIENT_ID` | both | app registration's Application (client) ID |
 | `MS_GRAPH_CLIENT_SECRET` | both | client secret **value** |
-| `MS_GRAPH_ORG_CALENDAR_USER` | **A** | mailbox holding the org calendar |
+| `ORG_CALENDAR_ICS_URL` | **A**, option 1 | published .ics link; takes precedence |
+| `MS_GRAPH_ORG_CALENDAR_USER` | **A**, option 2 | mailbox holding the org calendar |
 | `MS_GRAPH_CALENDAR_USER` | B | mailbox the PTO push writes to |
 
 `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are injected into every Edge

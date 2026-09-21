@@ -6,23 +6,39 @@
 // Runs server-side because it needs the Graph app's client secret, which must
 // never reach the browser. Invoked from `src/lib/orgCalendar.ts`.
 //
-// Required secrets (`supabase secrets set NAME=value`):
-//   MS_GRAPH_TENANT_ID          Azure AD (Entra) directory/tenant ID
-//   MS_GRAPH_CLIENT_ID          App registration's Application (client) ID
-//   MS_GRAPH_CLIENT_SECRET      App registration's client secret value
-//   MS_GRAPH_ORG_CALENDAR_USER  UPN/email of the mailbox whose calendar is the
-//                               organisation calendar (e.g. events@fswelsford.com)
+// Two interchangeable sources, checked in this order. Configure ONE.
 //
-// The first three are shared with `sync-pto-calendar`. Only the fourth is new.
+// 1. PUBLISHED ICS FEED — needs no tenant admin at all.
+//      ORG_CALENDAR_ICS_URL    the .ics link Outlook gives you for a published
+//                              calendar (Outlook web → Settings → Calendar →
+//                              Shared calendars → Publish a calendar)
+//    Any user can publish a calendar they own, so this works today without an
+//    app registration, admin consent, or an Exchange policy. The trade-off is
+//    that the URL is unauthenticated — anyone holding it can read that
+//    calendar — so publish only a calendar whose contents are not sensitive,
+//    and republish to rotate the URL if it leaks.
 //
-// IMPORTANT (Azure side, not code): this needs the Calendars.Read *application*
-// permission, which by default reads every mailbox in the tenant. Scope it to
-// MS_GRAPH_ORG_CALENDAR_USER alone with an Exchange Online Application Access
-// Policy before relying on it — see ../SETUP.md. One shared org calendar is
-// deliberately the only thing this reads: employees' personal calendars are
-// out of scope by design.
+// 2. MICROSOFT GRAPH — needs an Entra app registration and admin consent.
+//      MS_GRAPH_TENANT_ID          Entra directory/tenant ID
+//      MS_GRAPH_CLIENT_ID          App registration's Application (client) ID
+//      MS_GRAPH_CLIENT_SECRET      App registration's client secret value
+//      MS_GRAPH_ORG_CALENDAR_USER  Mailbox holding the organisation calendar
+//    The first three are shared with `sync-pto-calendar`. Authenticated, and
+//    updates are immediate rather than on Outlook's publish delay.
+//
+//    IMPORTANT (Azure side, not code): Calendars.Read as an *application*
+//    permission reads every mailbox in the tenant by default. Scope it to
+//    MS_GRAPH_ORG_CALENDAR_USER alone with an Exchange Online Application
+//    Access Policy before relying on it — see ../SETUP.md.
+//
+// Either way, ONE calendar is read. Employees' personal calendars are out of
+// scope by design.
+
+import { parseIcs } from './ics.ts';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+/** Stop a hostile or misconfigured URL streaming an unbounded body at us. */
+const MAX_ICS_BYTES = 5_000_000;
 
 interface ReadBody {
   /** Inclusive ISO date (YYYY-MM-DD) of the first day to fetch. */
@@ -78,6 +94,22 @@ function inclusiveEnd(ev: GraphEvent): string {
   return end < startDay ? startDay : end;
 }
 
+async function readFromIcs(url: string, start: string, end: string) {
+  const res = await fetch(url, { headers: { Accept: 'text/calendar, text/plain' } });
+  if (!res.ok) throw new Error(`ICS fetch failed: ${res.status} ${await res.text()}`);
+
+  const body = await res.text();
+  if (body.length > MAX_ICS_BYTES) {
+    throw new Error(`ICS feed too large: ${body.length} bytes`);
+  }
+  if (!body.includes('BEGIN:VCALENDAR')) {
+    // Outlook serves an HTML error page rather than a 4xx when a published
+    // link has been revoked, so the status code alone doesn't catch it.
+    throw new Error('ICS feed did not return a calendar — is the link still published?');
+  }
+  return parseIcs(body, start, end);
+}
+
 Deno.serve(async (req) => {
   try {
     const { start, end } = (await req.json()) as ReadBody;
@@ -94,7 +126,26 @@ Deno.serve(async (req) => {
       });
     }
 
-    const calendarUser = Deno.env.get('MS_GRAPH_ORG_CALENDAR_USER')!;
+    // Source 1: a published ICS feed, which needs no tenant admin.
+    const icsUrl = Deno.env.get('ORG_CALENDAR_ICS_URL');
+    if (icsUrl) {
+      const events = await readFromIcs(icsUrl, start, end);
+      return new Response(JSON.stringify({ events }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Source 2: Microsoft Graph.
+    const calendarUser = Deno.env.get('MS_GRAPH_ORG_CALENDAR_USER');
+    if (!calendarUser) {
+      // Neither source configured. Not an error — the overlay is optional, and
+      // the PTO Calendar is expected to work without it.
+      return new Response(JSON.stringify({ events: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const token = await getGraphToken();
 
     // calendarView expands recurring series into individual occurrences, which
