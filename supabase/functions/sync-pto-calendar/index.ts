@@ -25,6 +25,7 @@
 //     -Description "Valveman PTO Tracker -- PTO calendar mailbox only"
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { JSON_HEADERS, handlePreflight } from '../_shared/cors.ts';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 // Fixed GUID namespacing this app's custom event property, so an existing
@@ -76,10 +77,13 @@ function exclusiveEndDate(endDateIso: string): string {
 }
 
 Deno.serve(async (req) => {
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
+
   try {
     const { requestId, action } = (await req.json()) as SyncBody;
     if (!requestId || !action) {
-      return new Response(JSON.stringify({ error: 'requestId and action are required' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'requestId and action are required' }), { status: 400, headers: JSON_HEADERS });
     }
 
     const calendarUser = Deno.env.get('MS_GRAPH_CALENDAR_USER')!;
@@ -107,7 +111,7 @@ Deno.serve(async (req) => {
         });
         if (!res.ok && res.status !== 404) throw new Error(`Graph delete failed: ${res.status} ${await res.text()}`);
       }
-      return new Response(JSON.stringify({ status: existingId ? 'deleted' : 'noop' }), { status: 200 });
+      return new Response(JSON.stringify({ status: existingId ? 'deleted' : 'noop' }), { status: 200, headers: JSON_HEADERS });
     }
 
     const employee = (request as unknown as { pto_employees: { name: string; department: string } }).pto_employees;
@@ -133,9 +137,9 @@ Deno.serve(async (req) => {
     });
     if (!res.ok) throw new Error(`Graph ${existingId ? 'update' : 'create'} failed: ${res.status} ${await res.text()}`);
 
-    return new Response(JSON.stringify({ status: existingId ? 'updated' : 'created' }), { status: 200 });
+    return new Response(JSON.stringify({ status: existingId ? 'updated' : 'created' }), { status: 200, headers: JSON_HEADERS });
   } catch (err) {
     console.error('[sync-pto-calendar]', err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: JSON_HEADERS });
   }
 });

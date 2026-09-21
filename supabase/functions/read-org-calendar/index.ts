@@ -35,6 +35,7 @@
 // scope by design.
 
 import { parseIcs } from './ics.ts';
+import { JSON_HEADERS, handlePreflight } from '../_shared/cors.ts';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 /** Stop a hostile or misconfigured URL streaming an unbounded body at us. */
@@ -111,18 +112,21 @@ async function readFromIcs(url: string, start: string, end: string) {
 }
 
 Deno.serve(async (req) => {
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
+
   try {
     const { start, end } = (await req.json()) as ReadBody;
     if (!ISO_DATE.test(start ?? '') || !ISO_DATE.test(end ?? '')) {
       return new Response(JSON.stringify({ error: 'start and end must be YYYY-MM-DD' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
       });
     }
     if (end < start) {
       return new Response(JSON.stringify({ error: 'end must not precede start' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
       });
     }
 
@@ -132,7 +136,7 @@ Deno.serve(async (req) => {
       const events = await readFromIcs(icsUrl, start, end);
       return new Response(JSON.stringify({ events }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
       });
     }
 
@@ -143,7 +147,7 @@ Deno.serve(async (req) => {
       // the PTO Calendar is expected to work without it.
       return new Response(JSON.stringify({ events: [] }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
       });
     }
     const token = await getGraphToken();
@@ -181,13 +185,13 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ events }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
     });
   } catch (err) {
     console.error('[read-org-calendar]', err);
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
     });
   }
 });
