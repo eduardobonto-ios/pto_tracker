@@ -46,6 +46,25 @@ export const LEAVE_TYPES: LeaveType[] = [
   'Other',
 ];
 
+/**
+ * An event read from the organisation's shared Microsoft 365 calendar
+ * (company events, holidays, shutdowns) and overlaid on the PTO Calendar.
+ *
+ * Read-only and never persisted: Microsoft owns this data, the PTO Tracker
+ * only displays it. `endDate` is inclusive, unlike Graph's all-day events,
+ * which use an exclusive end.
+ */
+export interface OrgCalendarEvent {
+  id: string;
+  subject: string;
+  /** ISO date (YYYY-MM-DD) of the first day the event covers. */
+  startDate: string;
+  /** ISO date (YYYY-MM-DD) of the last day the event covers, inclusive. */
+  endDate: string;
+  isAllDay: boolean;
+  location?: string;
+}
+
 export type PTOStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
 
 export const PTO_STATUSES: PTOStatus[] = ['Pending', 'Approved', 'Rejected', 'Cancelled'];

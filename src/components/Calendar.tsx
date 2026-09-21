@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { departmentColor } from '@/lib/theme';
 import { cn, formatDays, toISODate } from '@/lib/utils';
-import type { Employee, PTORequest } from '@/types';
+import type { Employee, OrgCalendarEvent, PTORequest } from '@/types';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Entries a day cell shows before collapsing the rest into "+N more". */
+const MAX_PER_CELL = 3;
 
 interface DayCell {
   date: Date;
@@ -28,17 +31,30 @@ function buildMonth(year: number, month: number): DayCell[] {
   });
 }
 
-/** Month grid showing approved (and optionally pending) PTO. */
+/**
+ * Month grid showing approved (and optionally pending) PTO, optionally
+ * overlaid with read-only events from the organisation's Microsoft 365
+ * calendar.
+ *
+ * The grid owns the month cursor, so it reports the visible range upward via
+ * `onRangeChange` rather than having the page duplicate the cursor state. Org
+ * events are context, not records: they are not clickable and have no detail
+ * view, because the PTO Tracker does not own them.
+ */
 export function Calendar({
   requests,
   employees,
   showPending,
   onSelect,
+  orgEvents = [],
+  onRangeChange,
 }: {
   requests: PTORequest[];
   employees: Employee[];
   showPending: boolean;
   onSelect: (request: PTORequest) => void;
+  orgEvents?: OrgCalendarEvent[];
+  onRangeChange?: (startIso: string, endIso: string) => void;
 }) {
   const today = new Date();
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
@@ -64,6 +80,29 @@ export function Calendar({
     }
     return map;
   }, [visible]);
+
+  /** Map ISO date → org-calendar events covering that date. */
+  const orgByDate = useMemo(() => {
+    const map = new Map<string, OrgCalendarEvent[]>();
+    for (const ev of orgEvents) {
+      const start = new Date(ev.startDate + 'T00:00:00');
+      const end = new Date((ev.endDate || ev.startDate) + 'T00:00:00');
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const iso = toISODate(d);
+        map.set(iso, [...(map.get(iso) ?? []), ev]);
+      }
+    }
+    return map;
+  }, [orgEvents]);
+
+  // The grid always renders 42 cells, so the visible range spans the trailing
+  // and leading days of the neighbouring months too — fetch those as well, or
+  // the first and last rows come back empty.
+  const rangeStart = cells[0].iso;
+  const rangeEnd = cells[cells.length - 1].iso;
+  useEffect(() => {
+    onRangeChange?.(rangeStart, rangeEnd);
+  }, [rangeStart, rangeEnd, onRangeChange]);
 
   const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString('en-US', {
     month: 'long',
@@ -119,6 +158,12 @@ export function Calendar({
       <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6">
         {cells.map((cell) => {
           const items = byDate.get(cell.iso) ?? [];
+          const orgItems = orgByDate.get(cell.iso) ?? [];
+          // Org events lead: a company shutdown is the context you need to read
+          // the leave below it. Both compete for the same few visible slots.
+          const shownOrg = orgItems.slice(0, MAX_PER_CELL);
+          const shownPto = items.slice(0, MAX_PER_CELL - shownOrg.length);
+          const overflow = orgItems.length - shownOrg.length + (items.length - shownPto.length);
           const weekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
           return (
             <div
@@ -144,7 +189,19 @@ export function Calendar({
                 </span>
               </div>
               <div className="space-y-1">
-                {items.slice(0, 3).map((r) => {
+                {shownOrg.map((ev) => (
+                  <div
+                    key={`${cell.iso}-org-${ev.id}`}
+                    title={[ev.subject, ev.location, ev.isAllDay ? 'All day' : null]
+                      .filter(Boolean)
+                      .join(' · ')}
+                    className="flex w-full items-center gap-1.5 rounded-md bg-slateish-100 px-1.5 py-1 text-left text-[11px] font-medium text-slateish-700 ring-1 ring-inset ring-slateish-200"
+                  >
+                    <span className="h-2 w-2 shrink-0 rounded-[2px] bg-slateish-400" />
+                    <span className="truncate">{ev.subject}</span>
+                  </div>
+                ))}
+                {shownPto.map((r) => {
                   const emp = byId.get(r.employeeId);
                   const pending = r.status === 'Pending';
                   const half = r.days === 0.5 || r.durationType.startsWith('Half');
@@ -181,9 +238,9 @@ export function Calendar({
                     </button>
                   );
                 })}
-                {items.length > 3 && (
+                {overflow > 0 && (
                   <p className="px-1.5 text-[10.5px] font-semibold text-slateish-400">
-                    +{items.length - 3} more
+                    +{overflow} more
                   </p>
                 )}
               </div>
@@ -200,6 +257,11 @@ export function Calendar({
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full border border-dashed border-warning-500 bg-warning-100" />{' '}
             Pending
+          </span>
+        )}
+        {orgEvents.length > 0 && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-[2px] bg-slateish-400" /> Company event
           </span>
         )}
         <span className="inline-flex items-center gap-1.5">
