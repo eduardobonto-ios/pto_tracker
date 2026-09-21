@@ -78,6 +78,25 @@ today and switch to Graph later by unsetting it. No code change either way.
 | `MS_GRAPH_ORG_CALENDAR_USER` | **A**, option 2 | mailbox holding the org calendar |
 | `MS_GRAPH_CALENDAR_USER` | B | mailbox the PTO push writes to |
 
+### One calendar for both, or two?
+
+Both are supported. The two directions read and write independently, so you can
+point them at the same calendar or different ones.
+
+**Same calendar** (the chosen setup): company events and pushed PTO live
+together, and anyone viewing it in Outlook sees both at once. The tracker would
+otherwise read its own leave back and draw it twice — once in blue from
+Supabase, once as a grey company-event chip — so the writer stamps a marker into
+each event's body (`_shared/ptoMarker.ts`) and the reader drops anything
+carrying it. The marker sits in the body rather than a Graph extended property
+because ICS feeds carry no extended properties; the body survives both
+transports. It is human-readable on purpose, so someone editing the event in
+Outlook can see why their change gets overwritten.
+
+**Two calendars:** set the read and write secrets to different mailboxes and the
+filter never has anything to do. Slightly simpler, and viewers just tick both
+calendars in Outlook.
+
 `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are injected into every Edge
 Function automatically — do not set them.
 

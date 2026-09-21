@@ -1,5 +1,6 @@
 // Run with:  deno run supabase/functions/read-org-calendar/ics.test.ts
 import { parseIcs } from './ics.ts';
+import { PTO_MARKER_PREFIX, ptoMarkerLine } from '../_shared/ptoMarker.ts';
 
 let pass = 0, fail = 0;
 function check(name: string, got: unknown, want: unknown) {
@@ -90,6 +91,36 @@ check('out of window excluded',
 check('missing SUMMARY',
   parseIcs(ev('UID:n\r\nDTSTART;VALUE=DATE:20260915'), '2026-09-01', '2026-09-30').map(e => e.subject),
   ['(No subject)']);
+
+// --- filtering out the tracker's own pushed leave (one shared calendar) ---
+const EX = { excludeMarker: PTO_MARKER_PREFIX };
+
+// an event the tracker wrote is dropped
+check('PTO-authored event filtered out',
+  parseIcs(ev(`UID:p1\r\nSUMMARY:Josh Kirk \u2014 PTO (Vacation Leave)\r\nDESCRIPTION:Department: Operations\\nCoverage: Dylan\\n\\n${ptoMarkerLine('PTO-2026-002')}\r\nDTSTART;VALUE=DATE:20260914\r\nDTEND;VALUE=DATE:20260915`), '2026-09-01', '2026-09-30', EX).length,
+  0);
+
+// a genuine company event on the SAME calendar survives
+check('company event kept alongside it',
+  parseIcs(cal(`BEGIN:VEVENT\r\nUID:p2\r\nSUMMARY:Josh Kirk \u2014 PTO (Vacation Leave)\r\nDESCRIPTION:${ptoMarkerLine('PTO-2026-002')}\r\nDTSTART;VALUE=DATE:20260914\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:p3\r\nSUMMARY:Company Shutdown\r\nDTSTART;VALUE=DATE:20260916\r\nEND:VEVENT`), '2026-09-01', '2026-09-30', EX)
+    .map(e => e.subject),
+  ['Company Shutdown']);
+
+// without the option nothing is filtered — the filter must be opt-in
+check('no filtering when option omitted',
+  parseIcs(ev(`UID:p4\r\nSUMMARY:X\r\nDESCRIPTION:${ptoMarkerLine('PTO-2026-002')}\r\nDTSTART;VALUE=DATE:20260914`), '2026-09-01', '2026-09-30').length,
+  1);
+
+// a company event that merely mentions "PTO" is NOT filtered
+check('lookalike company event survives',
+  parseIcs(ev('UID:p5\r\nSUMMARY:PTO policy briefing\r\nDESCRIPTION:Discussing the PTO tracker rollout\r\nDTSTART;VALUE=DATE:20260914'), '2026-09-01', '2026-09-30', EX)
+    .map(e => e.subject),
+  ['PTO policy briefing']);
+
+// the marker survives ICS line folding, which Exchange applies to long bodies
+check('marker still matched across a folded line',
+  parseIcs(ev('UID:p6\r\nSUMMARY:Y\r\nDESCRIPTION:Department: Ops\\n\\n[pto-tra\r\n cker:PTO-2026-002] Created automatically\r\nDTSTART;VALUE=DATE:20260914'), '2026-09-01', '2026-09-30', EX).length,
+  0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) Deno.exit(1);

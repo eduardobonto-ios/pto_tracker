@@ -35,6 +35,7 @@
 // scope by design.
 
 import { parseIcs } from './ics.ts';
+import { PTO_MARKER_PREFIX, isPtoTrackerEvent } from '../_shared/ptoMarker.ts';
 import { JSON_HEADERS, handlePreflight } from '../_shared/cors.ts';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -55,6 +56,7 @@ interface GraphEvent {
   start: { dateTime: string };
   end: { dateTime: string };
   location?: { displayName?: string | null } | null;
+  body?: { content?: string | null } | null;
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -108,7 +110,9 @@ async function readFromIcs(url: string, start: string, end: string) {
     // link has been revoked, so the status code alone doesn't catch it.
     throw new Error('ICS feed did not return a calendar — is the link still published?');
   }
-  return parseIcs(body, start, end);
+  // Drop leave this app pushed, so one calendar can hold both company events
+  // and PTO without the tracker drawing its own leave a second time.
+  return parseIcs(body, start, end, { excludeMarker: PTO_MARKER_PREFIX });
 }
 
 Deno.serve(async (req) => {
@@ -158,7 +162,8 @@ Deno.serve(async (req) => {
       startDateTime: `${start}T00:00:00`,
       // exclusive upper bound, so push past the last day the caller asked for
       endDateTime: `${addDays(end, 1)}T00:00:00`,
-      $select: 'id,subject,start,end,isAllDay,location',
+      // `body` is only selected so PTO the app itself wrote can be filtered out.
+      $select: 'id,subject,start,end,isAllDay,location,body',
       $orderby: 'start/dateTime',
       $top: '250',
     });
@@ -174,7 +179,9 @@ Deno.serve(async (req) => {
     if (!res.ok) throw new Error(`Graph calendarView failed: ${res.status} ${await res.text()}`);
 
     const { value } = (await res.json()) as { value: GraphEvent[] };
-    const events = value.map((ev) => ({
+    const events = value
+      .filter((ev) => !isPtoTrackerEvent(ev.subject, ev.body?.content))
+      .map((ev) => ({
       id: ev.id,
       subject: ev.subject?.trim() || '(No subject)',
       startDate: ev.start.dateTime.slice(0, 10),

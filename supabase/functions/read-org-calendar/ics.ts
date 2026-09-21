@@ -166,8 +166,17 @@ function expandRecurrence(
 /**
  * Parse an ICS document, returning every event occurrence overlapping the
  * inclusive `[windowStart, windowEnd]` range.
+ *
+ * `options.excludeMarker` drops any event whose summary or description
+ * contains that substring. Used to filter out leave the PTO Tracker itself
+ * pushed, when one calendar holds both company events and PTO.
  */
-export function parseIcs(text: string, windowStart: string, windowEnd: string): IcsEvent[] {
+export function parseIcs(
+  text: string,
+  windowStart: string,
+  windowEnd: string,
+  options: { excludeMarker?: string } = {},
+): IcsEvent[] {
   const lines = unfold(text).split(/\r?\n/);
   const events: IcsEvent[] = [];
 
@@ -181,7 +190,9 @@ export function parseIcs(text: string, windowStart: string, windowEnd: string): 
       continue;
     }
     if (line === 'END:VEVENT') {
-      if (current) events.push(...buildEvents(current, exdates, windowStart, windowEnd));
+      if (current) {
+        events.push(...buildEvents(current, exdates, windowStart, windowEnd, options.excludeMarker));
+      }
       current = null;
       continue;
     }
@@ -208,7 +219,13 @@ function buildEvents(
   exdates: string[],
   windowStart: string,
   windowEnd: string,
+  excludeMarker?: string,
 ): IcsEvent[] {
+  if (excludeMarker) {
+    const haystack = `${props.SUMMARY?.value ?? ''}\n${props.DESCRIPTION?.value ?? ''}`;
+    if (haystack.includes(excludeMarker)) return [];
+  }
+
   const dtStart = props.DTSTART;
   if (!dtStart) return [];
   const startIso = toIsoDate(dtStart.value);

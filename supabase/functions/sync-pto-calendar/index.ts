@@ -26,6 +26,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { JSON_HEADERS, handlePreflight } from '../_shared/cors.ts';
+import { ptoMarkerLine } from '../_shared/ptoMarker.ts';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 // Fixed GUID namespacing this app's custom event property, so an existing
@@ -122,7 +123,14 @@ Deno.serve(async (req) => {
       end: { dateTime: `${exclusiveEndDate(request.end_date)}T00:00:00`, timeZone: 'UTC' },
       body: {
         contentType: 'Text',
-        content: `Department: ${employee?.department ?? '—'}\nCoverage: ${request.coverage || 'N/A'}\nRequest: ${request.id}`,
+        // The marker line lets read-org-calendar filter this event back out,
+        // so pushed leave isn't drawn twice when one calendar holds both.
+        content: [
+          `Department: ${employee?.department ?? '—'}`,
+          `Coverage: ${request.coverage || 'N/A'}`,
+          '',
+          ptoMarkerLine(request.id),
+        ].join('\n'),
       },
       singleValueExtendedProperties: [{ id: EXT_PROP_KEY, value: request.id }],
     };
