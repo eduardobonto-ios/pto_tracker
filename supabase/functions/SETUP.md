@@ -7,6 +7,7 @@ same secrets. Both are finished in code and inert until the Entra side exists.
 |---|---|---|---|---|
 | **A. Org calendar overlay** | Microsoft → app | `functions/read-org-calendar`, `src/lib/orgCalendar.ts` | `Calendars.Read` | **LIVE** via a published ICS feed |
 | **B. PTO push** | app → Microsoft | `functions/sync-pto-calendar`, `src/lib/calendarSync.ts` | `Calendars.ReadWrite` | built and tested, **blocked** on admin consent |
+| **C. PTO subscribe feed** | app → Microsoft, by pull | `functions/pto-calendar-feed` | none | **LIVE** — B's job without the consent |
 
 **A** shows the organisation's shared calendar (company events, holidays,
 shutdowns) on the PTO Calendar page alongside leave. It reads **one** mailbox —
@@ -73,6 +74,46 @@ today and switch to Graph later by unsetting it. No code change either way.
 
 ---
 
+## C — the subscribable PTO feed
+
+Serves approved leave as an ICS feed that Outlook subscribes to. It achieves
+what **B** achieves — leave visible on people's Microsoft calendars — but
+inverts the dependency: the calendar lives here and Outlook pulls it, so nobody
+has to grant anything. Deployed and live.
+
+**Subscribe in Outlook:** Add calendar → *Subscribe from web* → paste the feed
+URL → name it "Valveman-Welsford PTO".
+
+**The feed URL is a credential.** Outlook cannot send an Authorization header
+when polling a subscribed calendar, so the endpoint answers unauthenticated
+requests and the `?token=` query parameter is the only protection. Anyone
+holding the URL can read every employee's name, department and leave dates.
+
+- Share it like a password, not in a public channel.
+- Rotate with `supabase secrets set PTO_FEED_TOKEN=<new>`. That invalidates
+  every existing subscription at once; everyone must re-subscribe.
+- A missing or wrong token returns **404**, not 401, so probing reveals nothing.
+- Leave **reasons** are deliberately excluded. Only name, department, leave
+  type, duration and pay status.
+- Approved leave only; pending and rejected never appear.
+- Must be deployed with `--no-verify-jwt`, or Outlook gets a 401 and the
+  subscription silently stays empty.
+
+**Known trade-off vs B:** Outlook refreshes subscribed internet calendars on its
+own schedule, so new leave can take hours to show. Fine for planned leave, poor
+for same-day changes. It also lands as its own calendar rather than inside
+`Company Events`; viewers tick both and see them overlaid. Prefer B once consent
+lands — then retire this and rotate the token to kill the public URL.
+
+ICS construction lives in `pto-calendar-feed/build.ts`, free of imports and I/O
+so it tests without a network:
+
+```bash
+deno run supabase/functions/pto-calendar-feed/build.test.ts
+```
+
+---
+
 ## Secrets
 
 | Secret | Used by | Value |
@@ -83,6 +124,7 @@ today and switch to Graph later by unsetting it. No code change either way.
 | `ORG_CALENDAR_ICS_URL` | **A**, option 1 | published .ics link; takes precedence |
 | `MS_GRAPH_ORG_CALENDAR_USER` | **A**, option 2 | mailbox holding the org calendar |
 | `MS_GRAPH_CALENDAR_USER` | B | mailbox the PTO push writes to |
+| `PTO_FEED_TOKEN` | **C** | random string guarding the public feed URL |
 
 ### One calendar for both, or two?
 
