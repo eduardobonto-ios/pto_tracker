@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
-        'Content-Disposition': 'inline; filename="valveman-welsford-pto.ics"',
+        'Content-Disposition': 'inline; filename="fsw-group-pto.ics"',
         'Cache-Control': 'public, max-age=900',
       },
     });

@@ -80,8 +80,11 @@ export function buildIcsFeed(rows: RequestRow[], stamp: string): string {
     'PRODID:-//Valveman-Welsford//PTO Tracker//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'X-WR-CALNAME:Valveman-Welsford PTO',
-    'X-WR-CALDESC:Approved time off from the PTO Tracker',
+    // Subscribers adopt this as the calendar's display name, so it is the one
+    // people actually see in Outlook and Google. Changing it only affects NEW
+    // subscriptions — existing ones keep whatever name they were created with.
+    'X-WR-CALNAME:FSW Group PTO',
+    'X-WR-CALDESC:Approved time off from the Valveman-Welsford PTO Tracker',
     // Hints that hourly polling is plenty. Outlook treats these as advisory
     // and refreshes on its own schedule regardless.
     'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
