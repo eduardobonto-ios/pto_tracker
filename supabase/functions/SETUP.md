@@ -84,6 +84,18 @@ has to grant anything. Deployed and live.
 **Subscribe in Outlook:** Add calendar → *Subscribe from web* → paste the feed
 URL → name it "Valveman-Welsford PTO".
 
+Use the **path form**, which ends in `.ics` and carries no query string:
+
+```
+.../functions/v1/pto-calendar-feed/<PTO_FEED_TOKEN>/calendar.ics
+```
+
+Outlook fetches subscribed calendars server-side, and that fetcher rejects a
+calendar URL with a query string that doesn't end in `.ics` — reporting only
+"Couldn't import calendar. Try again later.", with the endpoint answering 200
+to every other client. The `?token=` form still works for curl and for anything
+already subscribed; it is only Outlook that is fussy.
+
 **The feed URL is a credential.** Outlook cannot send an Authorization header
 when polling a subscribed calendar, so the endpoint answers unauthenticated
 requests and the `?token=` query parameter is the only protection. Anyone

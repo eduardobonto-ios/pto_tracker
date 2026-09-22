@@ -25,7 +25,15 @@
 // which this project already relies on for the inbound direction.
 //
 // Required secret:
-//   PTO_FEED_TOKEN   long random string, compared against ?token=
+//   PTO_FEED_TOKEN   long random string; accepted either as a path segment or
+//                    as ?token=
+//
+// Prefer the path form when subscribing:
+//   .../pto-calendar-feed/<token>/calendar.ics
+// Outlook fetches subscribed calendars server-side, and that fetcher is fussy
+// about URLs carrying a query string and not ending in .ics — it reports
+// "Couldn't import calendar. Try again later." without explaining why. The
+// query form still works for curl and for anything already subscribed.
 //
 // Deploy with JWT verification off, or Outlook gets a 401 and the subscription
 // silently never populates:
@@ -46,7 +54,13 @@ function shiftMonths(months: number): string {
 
 Deno.serve(async (req) => {
   const expected = Deno.env.get('PTO_FEED_TOKEN');
-  const supplied = new URL(req.url).searchParams.get('token');
+  const url = new URL(req.url);
+  // Accept the token from either form. The path form exists because Outlook's
+  // server-side fetcher balks at query strings on a calendar URL; the query
+  // form is kept so anything already subscribed keeps working.
+  const supplied = url.pathname.split('/').includes(expected ?? '\0')
+    ? expected
+    : url.searchParams.get('token');
   // 404 rather than 401: a wrong or missing token should look like nothing is
   // here, not like something worth guessing at.
   if (!expected || supplied !== expected) {
