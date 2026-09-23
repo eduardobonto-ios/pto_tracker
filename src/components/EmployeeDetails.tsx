@@ -8,7 +8,7 @@ import { EligibilityBadge, StatusBadge } from '@/components/StatusBadge';
 import { useApp } from '@/context/AppContext';
 import type { EmployeeEditInput } from '@/context/AppContext';
 import type { computeBalances } from '@/lib/pto';
-import { formatDate, formatDateLong, formatDateRange, formatDays } from '@/lib/utils';
+import { formatDateLong, formatDateRange, formatDays } from '@/lib/utils';
 import { DEPARTMENTS, type Department, type Employee, type PTORequest } from '@/types';
 
 type Balance = ReturnType<typeof computeBalances>[string];
@@ -19,10 +19,13 @@ type Balance = ReturnType<typeof computeBalances>[string];
  *
  * Splits the record in two, because the split is the thing people get wrong:
  * the top block is *stored* data an admin can edit, the bottom is *derived*
- * and has no edit affordance at all. Eligibility, days used, remaining and
- * % used are recomputed by `computeBalance` from the hire date, the allowance
- * and the approved request log every time this renders — there is no stored
- * copy to correct, and filing or approving leave moves them on its own.
+ * and has no edit affordance at all.
+ *
+ * Total PTO belongs in the derived half. It is NOT the employee's stored
+ * `annualPtoAllowance` — no calculation reads that column. `computeEntitlement`
+ * works it out from job title and hire date, so those two fields are what move
+ * it. Days used, remaining and % used come from the approved request log via
+ * `computeBalance`, and update as leave is filed and approved.
  */
 export function EmployeeDetails({
   employee,
@@ -74,9 +77,6 @@ export function EmployeeDetails({
             <DetailRow label="Role">{employee.jobTitle}</DetailRow>
             <DetailRow label="Department">{employee.department}</DetailRow>
             <DetailRow label="Hire date">{formatDateLong(employee.hireDate)}</DetailRow>
-            <DetailRow label="Annual allowance">
-              {formatDays(employee.annualPtoAllowance)} days
-            </DetailRow>
           </dl>
         )}
       </div>
@@ -86,7 +86,7 @@ export function EmployeeDetails({
           Calculated
         </h4>
         <p className="mb-3 text-[12px] leading-snug text-slateish-500">
-          Worked out from the hire date, the allowance and approved leave. These update
+          Worked out from the role, the hire date and approved leave. These update
           themselves — there is nothing to edit here.
         </p>
         <dl className="divide-y divide-slateish-200/70 border-t border-slateish-200/70 pt-2">
@@ -96,6 +96,11 @@ export function EmployeeDetails({
           <DetailRow label="Eligible">
             <EligibilityBadge eligible={balance.eligible} />
           </DetailRow>
+          {/* The entitlement is computed by `computeEntitlement`, NOT read from
+              the employee's stored `annualPtoAllowance` — that column is legacy
+              and no calculation consults it. Showing the stored value here made
+              the drawer disagree with the table, which is the bug this fixes. */}
+          <DetailRow label="Total PTO">{formatDays(balance.totalPto)} days</DetailRow>
           <DetailRow label="Days used">{formatDays(balance.daysUsed)}</DetailRow>
           <DetailRow label="Pending">{formatDays(balance.pendingDays)}</DetailRow>
           <DetailRow label="Days remaining">
@@ -141,9 +146,10 @@ export function EmployeeDetails({
 }
 
 /**
- * The editable half. Only fields that are actually stored appear here — see
- * `EmployeeEditInput`. Saving a new hire date or allowance is what shifts the
- * calculated block above, which is the whole point of letting these be edited.
+ * The editable half — only fields something actually reads. Changing the job
+ * title or hire date shifts the calculated block above, which is the point of
+ * allowing edits at all. There is deliberately no allowance input: see
+ * `EmployeeEditInput`.
  */
 function EmployeeEditForm({
   employee,
@@ -160,20 +166,13 @@ function EmployeeEditForm({
   const [jobTitle, setJobTitle] = useState(employee.jobTitle);
   const [department, setDepartment] = useState<Department>(employee.department);
   const [hireDate, setHireDate] = useState(employee.hireDate);
-  const [allowance, setAllowance] = useState(String(employee.annualPtoAllowance));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
     setSaving(true);
     setError(null);
-    const message = await onSave({
-      name,
-      jobTitle,
-      department,
-      hireDate,
-      annualPtoAllowance: Number(allowance),
-    });
+    const message = await onSave({ name, jobTitle, department, hireDate });
     setSaving(false);
     if (message) setError(message);
     else onSaved();
@@ -190,7 +189,10 @@ function EmployeeEditForm({
       <Field label="Name" required>
         <Input value={name} onChange={(e) => setName(e.target.value)} required />
       </Field>
-      <Field label="Role">
+      <Field
+        label="Role"
+        help="Drives entitlement: Territory Managers get the full 10 days as soon as they are eligible."
+      >
         <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
       </Field>
       <Field label="Department">
@@ -205,7 +207,7 @@ function EmployeeEditForm({
       <Field
         label="Hire date"
         required
-        help="Eligibility is six months after this date, so changing it moves the eligibility date too."
+        help="Eligibility is six months after this date, and entitlement grows from it — so changing this moves both."
       >
         <Input
           type="date"
@@ -214,20 +216,10 @@ function EmployeeEditForm({
           required
         />
       </Field>
-      <Field
-        label="Annual allowance (days)"
-        required
-        help={`Currently ${formatDays(employee.annualPtoAllowance)}. Days remaining is this minus approved leave.`}
-      >
-        <Input
-          type="number"
-          min={0}
-          step="0.5"
-          value={allowance}
-          onChange={(e) => setAllowance(e.target.value)}
-          required
-        />
-      </Field>
+      <p className="rounded-lg bg-slateish-50 px-3 py-2 text-[12px] leading-snug text-slateish-600">
+        Total PTO is not set per person — it is worked out from the role and hire date by the
+        entitlement rules, so there is no allowance field to edit.
+      </p>
 
       {error && (
         <p className="rounded-lg bg-danger-50 px-3 py-2 text-[13px] text-danger-700">{error}</p>
@@ -241,9 +233,7 @@ function EmployeeEditForm({
           {saving ? 'Saving…' : 'Save changes'}
         </Button>
       </div>
-      <p className="text-[12px] text-slateish-500">
-        Last hired {formatDate(employee.hireDate)} · {employee.email}
-      </p>
+      <p className="text-[12px] text-slateish-500">{employee.email}</p>
     </form>
   );
 }

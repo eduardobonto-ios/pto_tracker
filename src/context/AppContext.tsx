@@ -89,20 +89,24 @@ export interface NewAccountInput {
 /**
  * The employee fields an admin may edit from the PTO Tracker.
  *
- * Deliberately excludes everything derived — eligibility date, days used,
- * days remaining, % used are all computed from `hireDate`,
- * `annualPtoAllowance` and the request log by `computeBalance`, and are never
- * stored. Editing the two inputs below is what moves those numbers.
+ * Deliberately excludes everything derived. Eligibility, total PTO, days used,
+ * remaining and % used are all computed — `computeEntitlement` works the
+ * entitlement out from `jobTitle` and `hireDate`, and `computeBalance` draws
+ * usage from the approved request log. None of it is stored, so `jobTitle` and
+ * `hireDate` are the real levers on someone's entitlement.
  *
- * Also excludes `email` and `appRole`: both are tied to the sign-in account,
- * so changing them belongs in Account Management rather than here.
+ * Notably excludes `annualPtoAllowance`. That column still exists and is still
+ * written on account creation, but NO calculation reads it — offering it here
+ * gave admins an edit that saved successfully and changed nothing.
+ *
+ * Also excludes `email` and `appRole`: both are tied to the sign-in account, so
+ * changing them belongs in Account Management rather than here.
  */
 export interface EmployeeEditInput {
   name: string;
   jobTitle: string;
   department: Employee['department'];
   hireDate: string;
-  annualPtoAllowance: number;
 }
 
 interface AppContextValue {
@@ -378,9 +382,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const jobTitle = input.jobTitle.trim();
       if (!name) return 'Name is required.';
       if (!input.hireDate) return 'Hire date is required.';
-      if (!Number.isFinite(input.annualPtoAllowance) || input.annualPtoAllowance < 0) {
-        return 'Annual allowance must be zero or more.';
-      }
 
       try {
         const { data, error } = await supabase
@@ -390,7 +391,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             job_title: jobTitle || 'Team Member',
             department: input.department,
             hire_date: input.hireDate,
-            annual_pto_allowance: input.annualPtoAllowance,
           })
           .eq('id', employeeId)
           .select()
@@ -408,7 +408,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             job_title: jobTitle || 'Team Member',
             department: input.department,
             hire_date: input.hireDate,
-            annual_pto_allowance: input.annualPtoAllowance,
           })
           .eq('employee_id', employeeId);
         if (acctError) {
@@ -427,7 +426,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   jobTitle: jobTitle || 'Team Member',
                   department: input.department,
                   hireDate: input.hireDate,
-                  annualPtoAllowance: input.annualPtoAllowance,
                 }
               : a,
           ),
