@@ -4,10 +4,12 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Field, Input, Select } from '@/components/ui/Field';
+import { Drawer } from '@/components/ui/Modal';
 import { Table, Td, Th, Tr } from '@/components/ui/Table';
+import { EmployeeDetails } from '@/components/EmployeeDetails';
 import { useApp } from '@/context/AppContext';
 import { cn, formatDate, formatDays } from '@/lib/utils';
-import { DEPARTMENTS } from '@/types';
+import { DEPARTMENTS, type Employee } from '@/types';
 
 /** Green → yellow → orange → red, matching the legacy spreadsheet's usage heat-map. */
 function usedToneClasses(pct: number) {
@@ -24,11 +26,27 @@ function usedToneClasses(pct: number) {
  * Balance" card on PTO Requests instead.
  */
 export function MyPTOPage() {
-  const { employees, balances, summary } = useApp();
+  const { employees, balances, requests, summary } = useApp();
 
   const [query, setQuery] = useState('');
   const [department, setDepartment] = useState('all');
   const [eligibility, setEligibility] = useState('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Track the selection by id, not by object: an edit replaces the employee
+  // in state, and a held object would leave the drawer showing stale values.
+  const selected: Employee | null = selectedId
+    ? employees.find((e) => e.id === selectedId) ?? null
+    : null;
+  const selectedRequests = useMemo(
+    () =>
+      selected
+        ? requests
+            .filter((r) => r.employeeId === selected.id)
+            .sort((a, b) => b.startDate.localeCompare(a.startDate))
+        : [],
+    [requests, selected],
+  );
 
   const notEligible = employees.filter((e) => !balances[e.id]?.eligible);
 
@@ -135,7 +153,11 @@ export function MyPTOPage() {
               </thead>
               <tbody>
                 {rows.map(({ employee, balance }) => (
-                  <Tr key={employee.id}>
+                  <Tr
+                    key={employee.id}
+                    onClick={() => setSelectedId(employee.id)}
+                    className="cursor-pointer"
+                  >
                     <Td className="font-semibold text-navy-900">{employee.name}</Td>
                     <Td className="whitespace-nowrap">{employee.jobTitle}</Td>
                     <Td className="whitespace-nowrap">{employee.department}</Td>
@@ -187,6 +209,21 @@ export function MyPTOPage() {
           </div>
         </div>
       </div>
+
+      <Drawer
+        open={!!selected}
+        onClose={() => setSelectedId(null)}
+        title={selected?.name ?? ''}
+        description={selected ? `${selected.jobTitle} · ${selected.department}` : undefined}
+      >
+        {selected && (
+          <EmployeeDetails
+            employee={selected}
+            balance={balances[selected.id]}
+            requests={selectedRequests}
+          />
+        )}
+      </Drawer>
     </AppLayout>
   );
 }

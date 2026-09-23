@@ -86,6 +86,25 @@ export interface NewAccountInput {
   tempPassword: string;
 }
 
+/**
+ * The employee fields an admin may edit from the PTO Tracker.
+ *
+ * Deliberately excludes everything derived — eligibility date, days used,
+ * days remaining, % used are all computed from `hireDate`,
+ * `annualPtoAllowance` and the request log by `computeBalance`, and are never
+ * stored. Editing the two inputs below is what moves those numbers.
+ *
+ * Also excludes `email` and `appRole`: both are tied to the sign-in account,
+ * so changing them belongs in Account Management rather than here.
+ */
+export interface EmployeeEditInput {
+  name: string;
+  jobTitle: string;
+  department: Employee['department'];
+  hireDate: string;
+  annualPtoAllowance: number;
+}
+
 interface AppContextValue {
   session: Session;
   currentUser: Employee;
@@ -128,6 +147,11 @@ interface AppContextValue {
 
   /** Returns an error message on failure, or null on success. */
   createAccount: (input: NewAccountInput) => Promise<string | null>;
+  /**
+   * Admin edit of an employee's master data from the PTO Tracker. Returns an
+   * error message on failure, or null on success.
+   */
+  updateEmployee: (employeeId: string, input: EmployeeEditInput) => Promise<string | null>;
   /** Admin-initiated reset — sets the real password directly, no current-password check. */
   resetPassword: (accountId: string, newPassword: string) => void;
   revokeAccess: (accountId: string) => void;
@@ -348,6 +372,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [currentUser?.name, employees, routing],
   );
 
+  const updateEmployee = useCallback(
+    async (employeeId: string, input: EmployeeEditInput): Promise<string | null> => {
+      const name = input.name.trim();
+      const jobTitle = input.jobTitle.trim();
+      if (!name) return 'Name is required.';
+      if (!input.hireDate) return 'Hire date is required.';
+      if (!Number.isFinite(input.annualPtoAllowance) || input.annualPtoAllowance < 0) {
+        return 'Annual allowance must be zero or more.';
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('pto_employees')
+          .update({
+            name,
+            job_title: jobTitle || 'Team Member',
+            department: input.department,
+            hire_date: input.hireDate,
+            annual_pto_allowance: input.annualPtoAllowance,
+          })
+          .eq('id', employeeId)
+          .select()
+          .single();
+        if (error) throw error;
+
+        // pto_accounts carries its own copy of these fields, so leaving it
+        // alone would make Account Management disagree with the PTO Tracker
+        // about the same person. Not fatal if it fails — the employee row is
+        // what balances are computed from — so it does not block the edit.
+        const { error: acctError } = await supabase
+          .from('pto_accounts')
+          .update({
+            full_name: name,
+            job_title: jobTitle || 'Team Member',
+            department: input.department,
+            hire_date: input.hireDate,
+            annual_pto_allowance: input.annualPtoAllowance,
+          })
+          .eq('employee_id', employeeId);
+        if (acctError) {
+          // eslint-disable-next-line no-console
+          console.error('[PTO Tracker] employee updated but account copy did not:', acctError);
+        }
+
+        const updated = mapEmployeeRow(data as Record<string, unknown>);
+        setEmployees((prev) => prev.map((e) => (e.id === employeeId ? updated : e)));
+        setAccounts((prev) =>
+          prev.map((a) =>
+            a.employeeId === employeeId
+              ? {
+                  ...a,
+                  fullName: name,
+                  jobTitle: jobTitle || 'Team Member',
+                  department: input.department,
+                  hireDate: input.hireDate,
+                  annualPtoAllowance: input.annualPtoAllowance,
+                }
+              : a,
+          ),
+        );
+        return null;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[PTO Tracker] failed to update employee:', err);
+        return err instanceof Error ? err.message : 'Could not save those changes.';
+      }
+    },
+    [],
+  );
+
   const createAccount = useCallback(
     async (input: NewAccountInput): Promise<string | null> => {
       const employeeId = uid('emp');
@@ -522,6 +616,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rejectRequest,
     cancelRequest,
     createAccount,
+    updateEmployee,
     resetPassword,
     revokeAccess,
     restoreAccess,
