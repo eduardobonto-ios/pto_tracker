@@ -39,9 +39,8 @@ comment on column pto_employees.fixed_pto_days is
 -- eligibility_date_override is set to the same date and IS load-bearing: it is
 -- what the annual reset keys off.
 --
--- Job titles and emails come from the FSW Group directory sheet. Will Berget
--- is absent from that sheet; 'Administrator' is carried over from the original
--- seed data and should be confirmed.
+-- Job titles and emails come from the FSW Group directory sheet. Will Berget is
+-- absent from that sheet; Eduardo confirmed 'Operations Manager' 2026-09-25.
 -- ---------------------------------------------------------------------------
 
 insert into pto_employees (
@@ -58,8 +57,18 @@ insert into pto_employees (
   ('emp-us-07', 25, 'Steven Limanni',   'slimanni@fswelsford.com',  'Outside Sales Engineer','Sales',          '2025-12-01', 20, 'Employee', true, 'US', 20, '2025-12-01'),
   ('emp-us-08', 26, 'Dan York',         'dyork@fswelsford.com',     'Outside Sales Engineer','Sales',          '2026-01-06', 10, 'Employee', true, 'US', 10, '2026-01-06'),
   ('emp-us-09', 27, 'Darwin Mushrush',  'DMushrush@fswelsford.com', 'Outside Sales Engineer','Sales',          '2026-01-12', 10, 'Employee', true, 'US', 10, '2026-01-12'),
-  ('emp-us-10', 28, 'Will Berget',      'wberget@fswelsford.com',   'Administrator',         'Management',     '2026-08-19', 10, 'Admin',    true, 'US', 10, '2026-08-19')
+  ('emp-us-10', 28, 'Will Berget',      'wberget@fswelsford.com',   'Operations Manager',    'Operations',     '2026-08-19', 10, 'Admin',    true, 'US', 10, '2026-08-19')
 on conflict (id) do nothing;
+
+-- Correct Will Berget if an earlier run of this patch inserted him as
+-- 'Administrator' — the insert above is a no-op once the row exists.
+update pto_employees
+set job_title = 'Operations Manager', department = 'Operations'
+where id = 'emp-us-10' and job_title <> 'Operations Manager';
+
+update pto_accounts
+set job_title = 'Operations Manager', department = 'Operations'
+where id = 'acct-us-10' and job_title <> 'Operations Manager';
 
 -- Accounts, so they appear in every tab and can sign in.
 insert into pto_accounts (
