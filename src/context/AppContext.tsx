@@ -107,6 +107,11 @@ export interface EmployeeEditInput {
   jobTitle: string;
   department: Employee['department'];
   hireDate: string;
+  /**
+   * Blank clears the override, so eligibility falls back to the derived rule —
+   * the hire date for US staff, hire date + 6 months for PH.
+   */
+  eligibilityDateOverride: string;
 }
 
 interface AppContextValue {
@@ -391,6 +396,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             job_title: jobTitle || 'Team Member',
             department: input.department,
             hire_date: input.hireDate,
+            eligibility_date_override: input.eligibilityDateOverride || null,
           })
           .eq('id', employeeId)
           .select()
@@ -486,6 +492,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             department: input.department,
             hireDate: input.hireDate,
             annualPtoAllowance: input.annualPtoAllowance,
+            // New accounts are PH by default. US staff are provisioned by
+            // migration with an explicit region and a fixed allowance.
+            ptoRegion: 'PH',
             appRole: input.appRole,
             active: true,
           },

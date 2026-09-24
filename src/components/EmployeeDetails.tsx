@@ -166,13 +166,22 @@ function EmployeeEditForm({
   const [jobTitle, setJobTitle] = useState(employee.jobTitle);
   const [department, setDepartment] = useState<Department>(employee.department);
   const [hireDate, setHireDate] = useState(employee.hireDate);
+  const [eligibilityOverride, setEligibilityOverride] = useState(
+    employee.eligibilityDateOverride ?? '',
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
     setSaving(true);
     setError(null);
-    const message = await onSave({ name, jobTitle, department, hireDate });
+    const message = await onSave({
+      name,
+      jobTitle,
+      department,
+      hireDate,
+      eligibilityDateOverride: eligibilityOverride,
+    });
     setSaving(false);
     if (message) setError(message);
     else onSaved();
@@ -216,9 +225,24 @@ function EmployeeEditForm({
           required
         />
       </Field>
+      <Field
+        label="Eligibility date"
+        help={
+          employee.ptoRegion === 'US'
+            ? 'Leave blank to use the hire date — US staff are eligible from day one. The annual reset keys off this date.'
+            : 'Leave blank to use the standard six months after hire. The annual reset and the +2 increase both key off this date.'
+        }
+      >
+        <Input
+          type="date"
+          value={eligibilityOverride}
+          onChange={(e) => setEligibilityOverride(e.target.value)}
+        />
+      </Field>
       <p className="rounded-lg bg-slateish-50 px-3 py-2 text-[12px] leading-snug text-slateish-600">
-        Total PTO is not set per person — it is worked out from the role and hire date by the
-        entitlement rules, so there is no allowance field to edit.
+        {employee.ptoRegion === 'US'
+          ? 'Total PTO is a fixed figure for US staff and does not grow with tenure.'
+          : 'Total PTO is not set per person — it starts at 5 and gains 2 on each anniversary of the eligibility date, capped at 10.'}
       </p>
 
       {error && (

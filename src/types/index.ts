@@ -83,6 +83,9 @@ export const DURATION_TYPES: DurationType[] = [
 /** Application-level permission role (distinct from the employee's job title). */
 export type AppRole = 'Employee' | 'Admin';
 
+/** PH staff accrue with tenure; US staff hold a fixed negotiated allowance. */
+export type PtoRegion = 'PH' | 'US';
+
 export interface Employee {
   id: string;
   /** Row number as it appears in the legacy spreadsheet. */
@@ -99,6 +102,22 @@ export interface Employee {
    * single company-wide policy yet (observed values: 5 and 10).
    */
   annualPtoAllowance: number;
+  /**
+   * Which entitlement rules apply. Deliberately explicit rather than inferred
+   * from the email domain — Veam Chavez and Sharlyn Bacalso are both
+   * @fswelsford.com but PH-based, so the domain proves nothing.
+   */
+  ptoRegion: PtoRegion;
+  /**
+   * US only: total annual days, fixed regardless of tenure. Null for PH, whose
+   * entitlement `computeEntitlement` derives instead.
+   */
+  fixedPtoDays?: number;
+  /**
+   * Admin-set eligibility date. When absent it is derived — hire date for US,
+   * hire date + 6 months for PH.
+   */
+  eligibilityDateOverride?: string;
   appRole: AppRole;
   /** Optional avatar image URL; initials are used when absent. */
   avatarUrl?: string;

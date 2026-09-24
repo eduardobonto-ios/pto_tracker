@@ -10,10 +10,7 @@ import {
   PTO_ANNUAL_INCREMENT_DAYS,
   PTO_BASE_ENTITLEMENT_DAYS,
   PTO_ELIGIBILITY_MONTHS,
-  PTO_LEGACY_CREDIT_DAY,
-  PTO_LEGACY_CREDIT_MONTH,
   PTO_MAX_ENTITLEMENT_DAYS,
-  PTO_NEW_HIRE_COHORT_START_YEAR,
   PTO_TERRITORY_MANAGER_JOB_TITLES,
 } from './theme';
 import type {
@@ -34,12 +31,43 @@ export interface DepartmentLeaveConflict {
  * Company rule: an employee becomes eligible for PTO after 6 months of
  * employment. Returns the ISO date on which eligibility starts.
  */
+/**
+ * When an employee becomes eligible to draw leave.
+ *
+ * An admin-set `eligibilityDateOverride` wins outright. Otherwise US staff are
+ * eligible from their first day, and PH staff six months after hire.
+ */
+export function eligibilityDateFor(
+  employee: Pick<Employee, 'hireDate' | 'ptoRegion' | 'eligibilityDateOverride'>,
+): string {
+  if (employee.eligibilityDateOverride) return employee.eligibilityDateOverride;
+  if (employee.ptoRegion === 'US') return employee.hireDate;
+  return eligibilityDate(employee.hireDate);
+}
+
+/** Raw PH rule: hire date + 6 months. Prefer `eligibilityDateFor`. */
 export function eligibilityDate(hireDateIso: string): string {
   const d = parseISODate(hireDateIso);
   const target = new Date(d.getFullYear(), d.getMonth() + PTO_ELIGIBILITY_MONTHS, d.getDate());
   // Guard month-overflow (e.g. Aug 31 + 6 months → Feb 31 → Mar 3).
   if (target.getDate() !== d.getDate()) target.setDate(0);
   return toISODate(target);
+}
+
+/** Anniversaries of `startIso` that have passed on or before `asOf`. */
+function anniversariesSince(startIso: string, asOf: Date): number {
+  const start = parseISODate(startIso);
+  let count = 0;
+  let year = start.getFullYear() + 1;
+  for (;;) {
+    const a = new Date(year, start.getMonth(), start.getDate());
+    // Guard month-overflow the same way eligibilityDate does (Feb 29 → Mar 1).
+    if (a.getMonth() !== start.getMonth()) a.setDate(0);
+    if (a.getTime() > asOf.getTime()) break;
+    count += 1;
+    year += 1;
+  }
+  return count;
 }
 
 /** Whether the employee is eligible as of `asOf` (defaults to today). */
@@ -54,10 +82,7 @@ export function isEligible(hireDateIso: string, asOf: Date = new Date()): boolea
  * Territory Managers are always on the anniversary cohort, regardless of
  * hire year.
  */
-export function usesAnniversaryReset(employee: Pick<Employee, 'hireDate' | 'jobTitle'>): boolean {
-  if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) return true;
-  return parseISODate(employee.hireDate).getFullYear() >= PTO_NEW_HIRE_COHORT_START_YEAR;
-}
+
 
 /**
  * Annual PTO entitlement, computed purely from the employee's Hire Date and
@@ -69,39 +94,27 @@ export function usesAnniversaryReset(employee: Pick<Employee, 'hireDate' | 'jobT
  * `PTO_MAX_ENTITLEMENT_DAYS` immediately once eligible instead of graduating.
  */
 export function computeEntitlement(
-  employee: Pick<Employee, 'hireDate' | 'jobTitle'>,
+  employee: Pick<Employee, 'hireDate' | 'jobTitle' | 'ptoRegion' | 'fixedPtoDays' | 'eligibilityDateOverride'>,
   asOf: Date = new Date(),
 ): number {
-  const eligible = parseISODate(eligibilityDate(employee.hireDate));
+  const eligible = parseISODate(eligibilityDateFor(employee));
   if (asOf.getTime() < eligible.getTime()) return 0;
-  if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) return PTO_MAX_ENTITLEMENT_DAYS;
 
-  const hire = parseISODate(employee.hireDate);
-  let days = PTO_BASE_ENTITLEMENT_DAYS;
+  // US staff hold a negotiated figure that never moves with tenure. It is the
+  // sum of their vacation, sick and personal allowances from the US sheet.
+  if (employee.ptoRegion === 'US') return employee.fixedPtoDays ?? 0;
 
-  if (usesAnniversaryReset(employee)) {
-    // +2 days on every hire-date anniversary that has passed.
-    let anniversary = new Date(hire.getFullYear() + 1, hire.getMonth(), hire.getDate());
-    while (anniversary.getTime() <= asOf.getTime()) {
-      days += PTO_ANNUAL_INCREMENT_DAYS;
-      anniversary = new Date(anniversary.getFullYear() + 1, hire.getMonth(), hire.getDate());
-    }
-  } else {
-    // +2 days on every June 1 that passes once eligible.
-    const eligYear = eligible.getFullYear();
-    const juneOfEligYear = new Date(eligYear, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
-    let cursor =
-      juneOfEligYear.getTime() >= eligible.getTime()
-        ? juneOfEligYear
-        : new Date(eligYear + 1, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
-    while (cursor.getTime() <= asOf.getTime()) {
-      days += PTO_ANNUAL_INCREMENT_DAYS;
-      cursor = new Date(cursor.getFullYear() + 1, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
-    }
+  // PH staff start at the base and gain PTO_ANNUAL_INCREMENT_DAYS on each
+  // anniversary of their ELIGIBILITY date — not their hire date, and not
+  // June 1. Confirmed with Princes 2026-09-24.
+  if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) {
+    return PTO_MAX_ENTITLEMENT_DAYS;
   }
-
+  const days =
+    PTO_BASE_ENTITLEMENT_DAYS + PTO_ANNUAL_INCREMENT_DAYS * anniversariesSince(eligibilityDateFor(employee), asOf);
   return Math.min(days, PTO_MAX_ENTITLEMENT_DAYS);
 }
+
 
 /**
  * ISO date on which the employee's *current* PTO year began — the reset
@@ -112,30 +125,24 @@ export function computeEntitlement(
  * hire doesn't inherit a start date before they could have used any leave.
  */
 export function currentPtoYearStart(
-  employee: Pick<Employee, 'hireDate' | 'jobTitle'>,
+  employee: Pick<Employee, 'hireDate' | 'jobTitle' | 'ptoRegion' | 'eligibilityDateOverride'>,
   asOf: Date = new Date(),
 ): string {
-  const hire = parseISODate(employee.hireDate);
-  const eligible = parseISODate(eligibilityDate(employee.hireDate));
+  // Both regions now reset on the anniversary of the ELIGIBILITY date — the
+  // old split between hire-date and June-1 cohorts is gone. Confirmed with
+  // Princes 2026-09-24. Before eligibility there is no cycle to be in, so the
+  // eligibility date itself is the floor.
+  const eligibleIso = eligibilityDateFor(employee);
+  const eligible = parseISODate(eligibleIso);
+  if (asOf.getTime() < eligible.getTime()) return eligibleIso;
 
-  if (usesAnniversaryReset(employee)) {
-    let cursor = new Date(hire.getFullYear(), hire.getMonth(), hire.getDate());
-    while (true) {
-      const next = new Date(cursor.getFullYear() + 1, hire.getMonth(), hire.getDate());
-      if (next.getTime() > asOf.getTime()) break;
-      cursor = next;
-    }
-    return toISODate(cursor);
-  }
-
-  const year = asOf.getFullYear();
-  const juneThisYear = new Date(year, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
-  const start =
-    juneThisYear.getTime() <= asOf.getTime()
-      ? juneThisYear
-      : new Date(year - 1, PTO_LEGACY_CREDIT_MONTH, PTO_LEGACY_CREDIT_DAY);
-  return toISODate(start.getTime() > eligible.getTime() ? start : eligible);
+  const passed = anniversariesSince(eligibleIso, asOf);
+  if (passed === 0) return eligibleIso;
+  const start = new Date(eligible.getFullYear() + passed, eligible.getMonth(), eligible.getDate());
+  if (start.getMonth() !== eligible.getMonth()) start.setDate(0);
+  return toISODate(start);
 }
+
 
 /** Chargeable days implied by a duration selection over a date range. */
 export function computeDays(
@@ -186,7 +193,7 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
   const pendingDays = round(
     mine.filter((r) => r.status === 'Pending').reduce((sum, r) => sum + r.days, 0),
   );
-  const eligible = isEligible(employee.hireDate);
+  const eligible = parseISODate(eligibilityDateFor(employee)).getTime() <= Date.now();
   // Entitlement is derived from Hire Date/job title rather than the legacy
   // per-employee allowance field — see `computeEntitlement` / lib/theme.ts.
   const totalPto = computeEntitlement(employee);
@@ -203,7 +210,7 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
     daysRemaining,
     percentUsed,
     eligible,
-    eligibilityDate: eligibilityDate(employee.hireDate),
+    eligibilityDate: eligibilityDateFor(employee),
   };
 }
 

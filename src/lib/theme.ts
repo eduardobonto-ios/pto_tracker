@@ -78,34 +78,38 @@ export const APP_SUITE = 'Valveman Internal Suite';
 export const PTO_ELIGIBILITY_MONTHS = 6;
 
 /**
- * Annual entitlement rules (see `lib/pto.ts#computeEntitlement`).
+ * Annual entitlement rules (see `lib/pto.ts#computeEntitlement`). Confirmed
+ * with Princes 2026-09-24/25.
  *
- * Every employee starts at `PTO_BASE_ENTITLEMENT_DAYS` once they clear the
- * 6-month eligibility rule. From there, which "cohort" (see
- * `lib/pto.ts#usesAnniversaryReset`) they fall into decides when their PTO
- * year (and thus days-used counter) resets:
- *  - Employees hired in `PTO_NEW_HIRE_COHORT_START_YEAR` or later, and
- *    `PTO_TERRITORY_MANAGER_JOB_TITLES` regardless of hire year, reset on
- *    their hire-date anniversary.
- *  - Everyone else resets on every `PTO_LEGACY_CREDIT_MONTH`/
- *    `PTO_LEGACY_CREDIT_DAY` (June 1) that passes after they're eligible.
- * Entitlement growth differs by cohort too: the anniversary/June-1 cohorts
- * above gain `PTO_ANNUAL_INCREMENT_DAYS` on each cycle, capped at
- * `PTO_MAX_ENTITLEMENT_DAYS` — except `PTO_TERRITORY_MANAGER_JOB_TITLES`,
- * who get `PTO_MAX_ENTITLEMENT_DAYS` immediately once eligible, no
- * graduated ramp-up. Confirmed against the legacy spreadsheet: all real
- * Territory Managers show the max regardless of hire date, never a
- * graduated 5/7/9 in between.
+ * Which rules apply is decided by `Employee.ptoRegion`, NOT the email domain —
+ * Veam Chavez and Sharlyn Bacalso are both @fswelsford.com but PH-based.
+ *
+ *  PH: eligible six months after hire. Entitlement starts at
+ *      `PTO_BASE_ENTITLEMENT_DAYS` and gains `PTO_ANNUAL_INCREMENT_DAYS` on
+ *      every anniversary of the ELIGIBILITY date, capped at
+ *      `PTO_MAX_ENTITLEMENT_DAYS`.
+ *  US: eligible from day one. Entitlement is `Employee.fixedPtoDays` — a
+ *      negotiated per-person figure (the sum of their vacation, sick and
+ *      personal days) that never grows with tenure.
+ *
+ * Both regions reset their days-used counter on the anniversary of the
+ * eligibility date. `Employee.eligibilityDateOverride` replaces the derived
+ * eligibility date for either region, and therefore moves both the ramp and
+ * the reset.
+ *
+ * The old June-1 / hire-date cohort split is gone, along with
+ * `usesAnniversaryReset`. Everything now keys off eligibility.
+ *
+ * OPEN: `PTO_TERRITORY_MANAGER_JOB_TITLES` still short-circuits PH staff to
+ * the maximum immediately rather than ramping. Princes's wording implies they
+ * should ramp like everyone else, but that would move Josh Kirk to -5 days
+ * against leave already taken, so it is left as-is pending confirmation.
  */
 export const PTO_BASE_ENTITLEMENT_DAYS = 5;
 export const PTO_ANNUAL_INCREMENT_DAYS = 2;
 export const PTO_MAX_ENTITLEMENT_DAYS = 10;
-export const PTO_NEW_HIRE_COHORT_START_YEAR = 2026;
-/** Always reset on hire-date anniversary and get the max entitlement immediately, regardless of hire year. */
+/** Get `PTO_MAX_ENTITLEMENT_DAYS` immediately once eligible — see OPEN above. */
 export const PTO_TERRITORY_MANAGER_JOB_TITLES = ['Territory Manager'];
-/** Month is 0-indexed: 5 = June. */
-export const PTO_LEGACY_CREDIT_MONTH = 5;
-export const PTO_LEGACY_CREDIT_DAY = 1;
 
 /**
  * Manager Approval Workflow routing (job-title/department manager overrides,
