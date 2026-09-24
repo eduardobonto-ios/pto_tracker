@@ -91,5 +91,18 @@ check('reset follows the override',
   currentPtoYearStart(ph({ hireDate: '2025-06-23', eligibilityDateOverride: '2025-01-01' }), AS_OF),
   '2026-01-01');
 
+// --- Territory Managers: full entitlement immediately, no ramp -------------
+// Confirmed 2026-09-25. Hired 2025-06-15, eligible 2025-12-15, no anniversary
+// passed — a non-TM on the same dates would read 5.
+check('TM gets the max with no anniversaries passed',
+  computeEntitlement(ph({ jobTitle: 'Territory Manager', hireDate: '2025-06-15' }), AS_OF), 10);
+check('same dates, non-TM, reads the base',
+  computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 5);
+check('TM still waits for eligibility',
+  computeEntitlement(ph({ jobTitle: 'Territory Manager', hireDate: '2026-05-26' }), AS_OF), 0);
+// US takes precedence — fixedPtoDays wins even for a Territory Manager.
+check('US Territory Manager takes fixed days, not 10',
+  computeEntitlement(us({ jobTitle: 'Territory Manager', fixedPtoDays: 20 }), AS_OF), 20);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

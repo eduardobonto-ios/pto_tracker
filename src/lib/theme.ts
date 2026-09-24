@@ -100,10 +100,9 @@ export const PTO_ELIGIBILITY_MONTHS = 6;
  * The old June-1 / hire-date cohort split is gone, along with
  * `usesAnniversaryReset`. Everything now keys off eligibility.
  *
- * OPEN: `PTO_TERRITORY_MANAGER_JOB_TITLES` still short-circuits PH staff to
- * the maximum immediately rather than ramping. Princes's wording implies they
- * should ramp like everyone else, but that would move Josh Kirk to -5 days
- * against leave already taken, so it is left as-is pending confirmation.
+ * `PTO_TERRITORY_MANAGER_JOB_TITLES` short-circuits PH staff to the maximum
+ * the moment they are eligible, with no graduated ramp. Confirmed with Princes
+ * via Eduardo 2026-09-25 — Territory Managers get the full ten immediately.
  */
 export const PTO_BASE_ENTITLEMENT_DAYS = 5;
 export const PTO_ANNUAL_INCREMENT_DAYS = 2;
