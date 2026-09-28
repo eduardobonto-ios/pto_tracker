@@ -1,4 +1,5 @@
 import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from 'react';
+import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -53,6 +54,75 @@ export function Th({
     >
       {children}
     </th>
+  );
+}
+
+export type SortDirection = 'asc' | 'desc';
+
+export interface SortState<K extends string = string> {
+  key: K;
+  direction: SortDirection;
+}
+
+/**
+ * A `Th` you can click to sort by.
+ *
+ * Carries a permanent chevron affordance rather than revealing one on hover,
+ * so it reads as sortable before anyone touches it — the inactive state is a
+ * dimmed up/down pair, and the active column shows the direction it is sorted.
+ */
+export function SortableTh<K extends string>({
+  sortKey,
+  sort,
+  onSort,
+  align = 'left',
+  className,
+  children,
+}: {
+  sortKey: K;
+  sort: SortState<K> | null;
+  onSort: (key: K) => void;
+  align?: 'left' | 'right' | 'center';
+  className?: string;
+  children: ReactNode;
+}) {
+  const active = sort?.key === sortKey;
+  const direction = active ? sort.direction : null;
+
+  return (
+    <Th
+      align={align}
+      className={cn('p-0', className)}
+      // Screen readers announce the sort state from this, so it has to track
+      // `direction` rather than merely whether the column is active.
+      aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        title={`Sort by ${typeof children === 'string' ? children : sortKey}`}
+        className={cn(
+          'group flex w-full items-center gap-1.5 px-4 py-3 text-[11px] font-semibold uppercase',
+          'tracking-[0.06em] transition-colors first:pl-5 last:pr-5',
+          'hover:text-brand-600 focus-visible:outline-none focus-visible:text-brand-600',
+          active ? 'text-brand-600' : 'text-slateish-500',
+          align === 'right' && 'justify-end',
+          align === 'center' && 'justify-center',
+        )}
+      >
+        <span>{children}</span>
+        {direction === 'asc' ? (
+          <ChevronUp size={13} className="shrink-0" />
+        ) : direction === 'desc' ? (
+          <ChevronDown size={13} className="shrink-0" />
+        ) : (
+          <ChevronsUpDown
+            size={13}
+            className="shrink-0 text-slateish-300 transition-colors group-hover:text-brand-400"
+          />
+        )}
+      </button>
+    </Th>
   );
 }
 

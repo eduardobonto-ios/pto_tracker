@@ -1,13 +1,41 @@
+import { useMemo, useState } from 'react';
 import { Inbox } from 'lucide-react';
-import { EmptyState, Table, TableShell, Td, Th, Tr } from '@/components/ui/Table';
+import {
+  EmptyState,
+  SortableTh,
+  Table,
+  TableShell,
+  Td,
+  Tr,
+  type SortState,
+} from '@/components/ui/Table';
 import { Avatar } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
 import { formatDate, formatDays } from '@/lib/utils';
 import type { Employee, PTORequest } from '@/types';
 
+/** Every column that can be sorted on. */
+type SortKey =
+  | 'employee'
+  | 'department'
+  | 'id'
+  | 'requestDate'
+  | 'startDate'
+  | 'endDate'
+  | 'days'
+  | 'status'
+  | 'coverage'
+  | 'notes'
+  | 'payStatus';
+
 /**
  * The PTO Requests log — replaces the "PTO Log" tab of the Google Sheet.
  * Rows are clickable and open the request details drawer.
+ *
+ * Sorting lives here rather than in the page so every caller gets it without
+ * wiring up state. Until a header is clicked the rows keep the order they
+ * arrived in — newest first, straight from the query — so the default view is
+ * unchanged.
  */
 export function PTORequestTable({
   requests,
@@ -24,8 +52,64 @@ export function PTORequestTable({
   /** Bounds the table to its container and lets it scroll internally (sticky header) instead of the whole page. */
   fillHeight?: boolean;
 }) {
-  const byId = new Map(employees.map((e) => [e.id, e]));
+  const byId = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const columnCount = showEmployeeColumns ? 10 : 9;
+
+  const [sort, setSort] = useState<SortState<SortKey> | null>(null);
+
+  // First click sorts ascending, clicking the same header again flips it.
+  const toggleSort = (key: SortKey) =>
+    setSort((prev) =>
+      prev?.key === key ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' },
+    );
+
+  const sorted = useMemo(() => {
+    if (!sort) return requests;
+
+    // Dates are ISO strings, so comparing them as text is already
+    // chronological — no parsing needed, and no timezone to get wrong.
+    const value = (r: PTORequest): string | number => {
+      switch (sort.key) {
+        case 'employee':
+          return byId.get(r.employeeId)?.name ?? '';
+        case 'department':
+          return byId.get(r.employeeId)?.department ?? '';
+        case 'id':
+          return r.id;
+        case 'requestDate':
+          return r.requestDate;
+        case 'startDate':
+          return r.startDate;
+        case 'endDate':
+          return r.endDate || r.startDate;
+        case 'days':
+          return r.days;
+        case 'status':
+          return r.status;
+        case 'coverage':
+          return r.coverage;
+        case 'notes':
+          return r.notes;
+        case 'payStatus':
+          return r.payStatus;
+      }
+    };
+
+    const factor = sort.direction === 'asc' ? 1 : -1;
+    // Copy first: sorting in place would mutate the caller's array.
+    return [...requests].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor;
+      // Blank coverage/notes sink to the bottom either way, so an empty cell is
+      // never what you land on when you sort a column to find something.
+      const as = String(av);
+      const bs = String(bv);
+      if (!as && bs) return 1;
+      if (as && !bs) return -1;
+      return as.localeCompare(bs) * factor;
+    });
+  }, [requests, sort, byId]);
 
   const table = (
     <Table className={showEmployeeColumns ? 'min-w-[1180px]' : 'min-w-[1000px]'}>
@@ -33,24 +117,46 @@ export function PTORequestTable({
           <tr>
             {showEmployeeColumns ? (
               <>
-                <Th>Team Member</Th>
-                <Th>Department</Th>
+                <SortableTh sortKey="employee" sort={sort} onSort={toggleSort}>
+                  Team Member
+                </SortableTh>
+                <SortableTh sortKey="department" sort={sort} onSort={toggleSort}>
+                  Department
+                </SortableTh>
               </>
             ) : (
-              <Th>Request ID</Th>
+              <SortableTh sortKey="id" sort={sort} onSort={toggleSort}>
+                Request ID
+              </SortableTh>
             )}
-            <Th>Request Date</Th>
-            <Th>Start Date</Th>
-            <Th>End Date</Th>
-            <Th align="right">Days</Th>
-            <Th>Status</Th>
-            <Th>Coverage / POC</Th>
-            <Th>Notes</Th>
-            <Th>Paid / Unpaid</Th>
+            <SortableTh sortKey="requestDate" sort={sort} onSort={toggleSort}>
+              Request Date
+            </SortableTh>
+            <SortableTh sortKey="startDate" sort={sort} onSort={toggleSort}>
+              Start Date
+            </SortableTh>
+            <SortableTh sortKey="endDate" sort={sort} onSort={toggleSort}>
+              End Date
+            </SortableTh>
+            <SortableTh sortKey="days" sort={sort} onSort={toggleSort} align="right">
+              Days
+            </SortableTh>
+            <SortableTh sortKey="status" sort={sort} onSort={toggleSort}>
+              Status
+            </SortableTh>
+            <SortableTh sortKey="coverage" sort={sort} onSort={toggleSort}>
+              Coverage / POC
+            </SortableTh>
+            <SortableTh sortKey="notes" sort={sort} onSort={toggleSort}>
+              Notes
+            </SortableTh>
+            <SortableTh sortKey="payStatus" sort={sort} onSort={toggleSort}>
+              Paid / Unpaid
+            </SortableTh>
           </tr>
         </thead>
         <tbody>
-          {requests.length === 0 && (
+          {sorted.length === 0 && (
             <EmptyState
               colSpan={columnCount}
               icon={<Inbox size={20} />}
@@ -58,7 +164,7 @@ export function PTORequestTable({
               description="Try clearing the search box or widening the date range."
             />
           )}
-          {requests.map((r) => {
+          {sorted.map((r) => {
             const emp = byId.get(r.employeeId);
             return (
               <Tr key={r.id} onClick={() => onSelect(r)}>
