@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Ban,
   CalendarRange,
+  Pencil,
   Check,
   CircleSlash,
   Clock3,
@@ -13,13 +14,20 @@ import {
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Input, Textarea } from '@/components/ui/Field';
+import { Field, Input, Select, Textarea } from '@/components/ui/Field';
 import { Avatar, DetailRow, SectionTitle } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
 import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
 import { useApp } from '@/context/AppContext';
+import type { RequestEditInput } from '@/context/AppContext';
+import { computeDays } from '@/lib/pto';
 import { formatDateLong, formatDateRange, formatDateTime, formatDays } from '@/lib/utils';
-import type { PTORequest } from '@/types';
+import {
+  DURATION_TYPES,
+  LEAVE_TYPES,
+  type DurationType,
+  type PTORequest,
+} from '@/types';
 
 /**
  * Full detail view for one PTO request, shared by the drawer on the log page
@@ -29,6 +37,7 @@ export function RequestDetails({ request }: { request: PTORequest }) {
   const { employees, balances, currentUser, isAdmin, cancelRequest } = useApp();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [editing, setEditing] = useState(false);
 
   const employee = employees.find((e) => e.id === request.employeeId);
   const balance = employee ? balances[employee.id] : undefined;
@@ -76,6 +85,13 @@ export function RequestDetails({ request }: { request: PTORequest }) {
             <StatusBadge status={request.status} />
             <PayBadge payStatus={request.payStatus} />
             <span className="font-mono text-[11px] text-slateish-400">{request.id}</span>
+            {/* Admin-only. An employee editing after approval would move leave
+                a manager already signed off on — see `updateRequest`. */}
+            {isAdmin && !editing && request.status !== 'Cancelled' && (
+              <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+                <Pencil size={14} /> Edit details
+              </Button>
+            )}
             {canCancel && (
               <Button size="sm" variant="secondary" onClick={() => setCancelOpen(true)}>
                 <Ban size={14} /> Cancel request
@@ -110,6 +126,9 @@ export function RequestDetails({ request }: { request: PTORequest }) {
       {/* Request facts */}
       <div className="rounded-2xl border border-slateish-200/80 bg-white p-5 shadow-card">
         <SectionTitle className="mb-1">Request detail</SectionTitle>
+        {editing ? (
+          <RequestEditForm request={request} onDone={() => setEditing(false)} />
+        ) : (
         <dl className="divide-y divide-slateish-200/70">
           <DetailRow label="Request date">{formatDateLong(request.requestDate)}</DetailRow>
           <DetailRow label="Leave type">{request.leaveType}</DetailRow>
@@ -139,6 +158,7 @@ export function RequestDetails({ request }: { request: PTORequest }) {
             </DetailRow>
           )}
         </dl>
+        )}
 
         {request.rejectionReason && (
           <div className="mt-4 rounded-xl border border-danger-200 bg-danger-50 p-4">
@@ -383,5 +403,186 @@ function MiniStat({
         {value}
       </p>
     </div>
+  );
+}
+
+/**
+ * Admin correction of a filed request.
+ *
+ * Total days is prefilled from `computeDays` whenever the dates or duration
+ * change, but stays editable — the legacy import contains rows whose recorded
+ * days deliberately disagree with the calendar span, and overwriting those on
+ * save would rewrite history the admin did not ask to change.
+ */
+function RequestEditForm({
+  request,
+  onDone,
+}: {
+  request: PTORequest;
+  onDone: () => void;
+}) {
+  const { updateRequest } = useApp();
+  const [leaveType, setLeaveType] = useState(request.leaveType);
+  const [startDate, setStartDate] = useState(request.startDate);
+  const [endDate, setEndDate] = useState(request.endDate || request.startDate);
+  const [durationType, setDurationType] = useState<DurationType>(request.durationType);
+  const [days, setDays] = useState(String(request.days));
+  const [payStatus, setPayStatus] = useState(request.payStatus);
+  const [coverage, setCoverage] = useState(request.coverage);
+  const [reason, setReason] = useState(request.reason);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const suggested = computeDays(startDate, endDate, durationType, request.totalHours);
+  const differs = Number(days) !== suggested;
+
+  const submit = async () => {
+    if (endDate < startDate) {
+      setError('End date cannot fall before the start date.');
+      return;
+    }
+    if (!(Number(days) > 0)) {
+      setError('Total days must be greater than zero.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const input: RequestEditInput = {
+      leaveType,
+      startDate,
+      endDate,
+      durationType,
+      days: Number(days),
+      payStatus,
+      coverage,
+      reason,
+      totalHours: request.totalHours,
+    };
+    const message = await updateRequest(request.id, input);
+    setSaving(false);
+    if (message) setError(message);
+    else onDone();
+  };
+
+  return (
+    <form
+      className="space-y-4 pt-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <Field label="Leave type">
+        <Select
+          value={leaveType}
+          onChange={(e) => setLeaveType(e.target.value as PTORequest['leaveType'])}
+        >
+          {LEAVE_TYPES.map((l) => (
+            <option key={l} value={l}>
+              {l}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Start date" required>
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              // Keep the range valid rather than letting the end fall behind.
+              if (endDate < e.target.value) setEndDate(e.target.value);
+            }}
+            required
+          />
+        </Field>
+        <Field label="End date" required>
+          <Input
+            type="date"
+            value={endDate}
+            min={startDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            required
+          />
+        </Field>
+      </div>
+
+      <Field label="Duration">
+        <Select
+          value={durationType}
+          onChange={(e) => setDurationType(e.target.value as DurationType)}
+        >
+          {DURATION_TYPES.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field
+        label="Total days"
+        required
+        help={
+          differs
+            ? `These dates and duration work out to ${formatDays(suggested)}. Leave it if the recorded figure is deliberate.`
+            : undefined
+        }
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={0.5}
+            step="0.5"
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            required
+          />
+          {differs && (
+            <Button type="button" size="sm" variant="secondary" onClick={() => setDays(String(suggested))}>
+              Use {formatDays(suggested)}
+            </Button>
+          )}
+        </div>
+      </Field>
+
+      <Field label="Paid / Unpaid">
+        <Select
+          value={payStatus}
+          onChange={(e) => setPayStatus(e.target.value as PTORequest['payStatus'])}
+        >
+          <option value="Paid">Paid</option>
+          <option value="Unpaid">Unpaid</option>
+        </Select>
+      </Field>
+
+      <Field label="Coverage / POC">
+        <Input value={coverage} onChange={(e) => setCoverage(e.target.value)} />
+      </Field>
+
+      <Field label="Reason / notes">
+        <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+      </Field>
+
+      {error && (
+        <p className="rounded-lg bg-danger-50 px-3 py-2 text-[13px] text-danger-700">{error}</p>
+      )}
+
+      <p className="rounded-lg bg-slateish-50 px-3 py-2 text-[12px] leading-snug text-slateish-600">
+        Status is not editable here — use Approve, Reject or Cancel, which notify the employee.
+        Any change you save is recorded in the request history below with your name.
+      </p>
+
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onDone} disabled={saving}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? 'Saving…' : 'Save changes'}
+        </Button>
+      </div>
+    </form>
   );
 }

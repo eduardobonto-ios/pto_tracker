@@ -168,6 +168,41 @@ export async function verifyLoginRpc(email: string, password: string): Promise<L
   return { accountId: row.account_id, employeeId: row.employee_id, mustChangePassword: row.must_change_password };
 }
 
+/**
+ * Admin correction of a filed request. Returns the updated row, or null if the
+ * function reported no row (which should not happen — it raises instead).
+ */
+export async function updateRequestRpc(input: {
+  requestId: string;
+  actorName: string;
+  leaveType: PTORequest['leaveType'];
+  startDate: string;
+  endDate: string;
+  durationType: PTORequest['durationType'];
+  days: number;
+  payStatus: PTORequest['payStatus'];
+  coverage: string;
+  reason: string;
+  totalHours?: number;
+}): Promise<PTORequest | null> {
+  const { data, error } = await supabase.rpc('pto_update_request', {
+    p_request_id: input.requestId,
+    p_actor_name: input.actorName,
+    p_leave_type: input.leaveType,
+    p_start_date: input.startDate,
+    p_end_date: input.endDate,
+    p_duration_type: input.durationType,
+    p_days: input.days,
+    p_pay_status: input.payStatus,
+    p_coverage: input.coverage,
+    p_reason: input.reason,
+    p_total_hours: input.totalHours ?? null,
+  });
+  if (error) throw error;
+  const row = (data as Record<string, unknown>[] | null)?.[0];
+  return row ? mapRequestRow(row) : null;
+}
+
 /** Admin-initiated (create account / reset password) — sets a password directly, no current-password check. */
 export async function setPasswordRpc(
   accountId: string,

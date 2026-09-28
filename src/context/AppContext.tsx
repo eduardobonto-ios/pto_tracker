@@ -34,6 +34,7 @@ import {
   rejectRequestRpc,
   setPasswordRpc,
   submitRequestRpc,
+  updateRequestRpc,
   verifyLoginRpc,
 } from '@/lib/supabaseActions';
 import { todayISO, uid } from '@/lib/utils';
@@ -114,6 +115,24 @@ export interface EmployeeEditInput {
   eligibilityDateOverride: string;
 }
 
+/**
+ * The request fields an admin may correct. Excludes `status` (approve, reject
+ * and cancel have their own actions, which send the notification emails),
+ * `employeeId` (reassigning leave is not a correction — cancel and re-file)
+ * and `requestDate` (when it was filed is a fact, not a detail).
+ */
+export interface RequestEditInput {
+  leaveType: PTORequest['leaveType'];
+  startDate: string;
+  endDate: string;
+  durationType: PTORequest['durationType'];
+  days: number;
+  payStatus: PTORequest['payStatus'];
+  coverage: string;
+  reason: string;
+  totalHours?: number;
+}
+
 interface AppContextValue {
   session: Session;
   currentUser: Employee;
@@ -153,6 +172,13 @@ interface AppContextValue {
   rejectRequest: (id: string, rejectionReason: string) => void;
   /** Employee cancelling their own request (or an admin on their behalf). Keeps the record, just changes its status. */
   cancelRequest: (id: string, reason?: string) => void;
+  /**
+   * Admin correction of a filed request's details. Admin-only by design: an
+   * employee editing after approval would move leave a manager already signed
+   * off on. Every edit lands in the request's timeline. Returns an error
+   * message on failure, or null on success.
+   */
+  updateRequest: (id: string, input: RequestEditInput) => Promise<string | null>;
 
   /** Returns an error message on failure, or null on success. */
   createAccount: (input: NewAccountInput) => Promise<string | null>;
@@ -446,6 +472,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const updateRequest = useCallback(
+    async (id: string, input: RequestEditInput): Promise<string | null> => {
+      try {
+        const updated = await updateRequestRpc({
+          requestId: id,
+          actorName: currentUser.name,
+          ...input,
+        });
+        if (!updated) return 'That request no longer exists.';
+        setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
+        // An approved request that moves dates has to move on the Microsoft
+        // calendar too, or Outlook keeps showing the old days. The Edge
+        // Function matches on request id, so this updates the event in place.
+        if (updated.status === 'Approved') syncApprovedLeaveToCalendar(updated);
+        return null;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[PTO Tracker] failed to update request:', err);
+        return err instanceof Error ? err.message : 'Could not save those changes.';
+      }
+    },
+    [currentUser?.name],
+  );
+
   const createAccount = useCallback(
     async (input: NewAccountInput): Promise<string | null> => {
       const employeeId = uid('emp');
@@ -624,6 +674,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     cancelRequest,
     createAccount,
     updateEmployee,
+    updateRequest,
     resetPassword,
     revokeAccess,
     restoreAccess,
