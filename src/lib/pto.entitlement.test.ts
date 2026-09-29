@@ -34,6 +34,7 @@ const ph = (over: Partial<Employee> = {}): Employee =>
     hireDate: '2025-01-08',
     annualPtoAllowance: 5,
     ptoRegion: 'PH',
+    ptoPlan: 'fixed',
     appRole: 'Employee',
     active: true,
     ...over,
@@ -41,6 +42,10 @@ const ph = (over: Partial<Employee> = {}): Employee =>
 
 const us = (over: Partial<Employee> = {}): Employee =>
   ph({ ptoRegion: 'US', email: 't@fswelsford.com', fixedPtoDays: 20, ...over });
+
+/** US employee on the tenure ramp: 10 days, +1/year of service, cap 15. */
+const ramp = (over: Partial<Employee> = {}): Employee =>
+  us({ ptoPlan: 'tenure_ramp', ...over });
 
 // --- eligibility -----------------------------------------------------------
 check('PH eligible six months after hire', eligibilityDateFor(ph({ hireDate: '2025-01-08' })), '2025-07-08');
@@ -61,6 +66,43 @@ check('US with no fixed days reads 0',
 // Hired today: eligible immediately, so entitlement is live at once.
 check('US hired today is already entitled',
   computeEntitlement(us({ fixedPtoDays: 10, hireDate: '2026-09-25' }), AS_OF), 10);
+
+// --- US tenure ramp: 10 base, +1 per year of service, cap 15 ---------------
+// From Jason Welsford's policy email, applied by patch_011. The two real
+// people on this plan, with their directory hire dates:
+check('Darwin Mushrush (hired 2026-01-12, 0 yrs) → 10',
+  computeEntitlement(ramp({ hireDate: '2026-01-12' }), AS_OF), 10);
+check('Daniel York (hired 2025-01-06, 1 yr) → 11',
+  computeEntitlement(ramp({ hireDate: '2025-01-06' }), AS_OF), 11);
+// The cap has to land exactly on the fifth anniversary — that is the whole
+// reason the ramp keys off service rather than starting everyone at 10 today.
+check('four years of service → 14',
+  computeEntitlement(ramp({ hireDate: '2022-01-06' }), AS_OF), 14);
+check('five years of service → 15',
+  computeEntitlement(ramp({ hireDate: '2021-01-06' }), AS_OF), 15);
+check('ramp caps at 15 and does not keep climbing',
+  computeEntitlement(ramp({ hireDate: '2010-01-06' }), AS_OF), 15);
+// The ramp counts HIRE anniversaries. Everything else in this file counts
+// eligibility anniversaries, so this is the case that catches a copy-paste.
+check('ramp keys off hire date, not the eligibility override',
+  computeEntitlement(ramp({ hireDate: '2025-01-06', eligibilityDateOverride: '2026-01-06' }), AS_OF), 11);
+// patch_011 leaves fixed_pto_days populated on ramp employees on purpose.
+check('tenure ramp ignores a stale fixedPtoDays',
+  computeEntitlement(ramp({ fixedPtoDays: 20, hireDate: '2026-01-12' }), AS_OF), 10);
+check('ramp still waits for a future eligibility override',
+  computeEntitlement(ramp({ hireDate: '2020-01-06', eligibilityDateOverride: '2027-01-01' }), AS_OF), 0);
+// Feb 29 has no anniversary in a common year; it must clamp back, not skip to
+// Mar 1 and lose a day of service.
+check('ramp clamps a Feb 29 hire date',
+  computeEntitlement(ramp({ hireDate: '2024-02-29' }), AS_OF), 12);
+// ptoPlan is a US-only concept — it must not leak into the PH rules.
+check('ptoPlan is ignored for PH staff',
+  computeEntitlement(ph({ ptoPlan: 'tenure_ramp', hireDate: '2025-01-08' }), AS_OF), 7);
+// The ramp moves entitlement; it must NOT move the annual reset, which still
+// follows the eligibility override.
+check('ramp leaves the reset on the eligibility override',
+  currentPtoYearStart(ramp({ hireDate: '2025-01-06', eligibilityDateOverride: '2026-01-06' }), AS_OF),
+  '2026-01-06');
 
 // --- PH: base 5, +2 per eligibility anniversary, cap 10 --------------------
 // Hired 2025-01-08 → eligible 2025-07-08 → one anniversary passed (2026-07-08).
@@ -91,15 +133,38 @@ check('reset follows the override',
   currentPtoYearStart(ph({ hireDate: '2025-06-23', eligibilityDateOverride: '2025-01-01' }), AS_OF),
   '2026-01-01');
 
-// --- Territory Managers: full entitlement immediately, no ramp -------------
-// Confirmed 2026-09-25. Hired 2025-06-15, eligible 2025-12-15, no anniversary
-// passed — a non-TM on the same dates would read 5.
+// --- Territory Managers ----------------------------------------------------
+// Two rules, both keyed off PTO_TERRITORY_MANAGER_JOB_TITLES:
+//   1. eligible from day one, either region (confirmed 2026-09-30)
+//   2. the full max at once, no ramp (confirmed 2026-09-25)
+const tm = (over: Partial<Employee> = {}): Employee =>
+  ph({ jobTitle: 'Territory Manager', ...over });
+
+check('TM is eligible on the hire date, not six months later',
+  eligibilityDateFor(tm({ hireDate: '2025-06-15' })), '2025-06-15');
+check('same hire date, non-TM, still waits six months',
+  eligibilityDateFor(ph({ hireDate: '2025-06-15' })), '2025-12-15');
+// Dylan Lavern's real case: hired 2026-06-15. Under the old rule he was not
+// eligible until 2026-12-15 and read 0 days.
+check('TM hired 2026-06-15 is eligible and on the max',
+  computeEntitlement(tm({ hireDate: '2026-06-15' }), AS_OF), 10);
 check('TM gets the max with no anniversaries passed',
-  computeEntitlement(ph({ jobTitle: 'Territory Manager', hireDate: '2025-06-15' }), AS_OF), 10);
+  computeEntitlement(tm({ hireDate: '2025-06-15' }), AS_OF), 10);
 check('same dates, non-TM, reads the base',
   computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 5);
-check('TM still waits for eligibility',
-  computeEntitlement(ph({ jobTitle: 'Territory Manager', hireDate: '2026-05-26' }), AS_OF), 0);
+// A future hire date is still a future hire date — day one is not day zero.
+check('TM hired after today is not yet entitled',
+  computeEntitlement(tm({ hireDate: '2026-10-01' }), AS_OF), 0);
+// An override still wins over the day-one rule, in both directions.
+check('override can delay a TM past their hire date',
+  eligibilityDateFor(tm({ hireDate: '2025-06-15', eligibilityDateOverride: '2026-12-01' })),
+  '2026-12-01');
+// Rule 1 moves the reset too: the PTO year now runs from the hire
+// anniversary rather than from a six-month mark.
+check('TM year starts on the hire anniversary',
+  currentPtoYearStart(tm({ hireDate: '2025-02-17' }), AS_OF), '2026-02-17');
+check('same hire date, non-TM, resets six months later',
+  currentPtoYearStart(ph({ hireDate: '2025-02-17' }), AS_OF), '2026-08-17');
 // US takes precedence — fixedPtoDays wins even for a Territory Manager.
 check('US Territory Manager takes fixed days, not 10',
   computeEntitlement(us({ jobTitle: 'Territory Manager', fixedPtoDays: 20 }), AS_OF), 20);

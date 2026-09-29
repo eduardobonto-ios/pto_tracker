@@ -11,6 +11,9 @@ import {
   PTO_BASE_ENTITLEMENT_DAYS,
   PTO_ELIGIBILITY_MONTHS,
   PTO_MAX_ENTITLEMENT_DAYS,
+  PTO_TENURE_RAMP_BASE_DAYS,
+  PTO_TENURE_RAMP_INCREMENT_DAYS,
+  PTO_TENURE_RAMP_MAX_DAYS,
   PTO_TERRITORY_MANAGER_JOB_TITLES,
 } from './theme';
 import type {
@@ -34,14 +37,27 @@ export interface DepartmentLeaveConflict {
 /**
  * When an employee becomes eligible to draw leave.
  *
- * An admin-set `eligibilityDateOverride` wins outright. Otherwise US staff are
- * eligible from their first day, and PH staff six months after hire.
+ * An admin-set `eligibilityDateOverride` wins outright. Otherwise:
+ *   US staff             eligible from their first day.
+ *   Territory Managers   eligible from their first day, in either region.
+ *                        Confirmed by Eduardo 2026-09-30 — the six-month rule
+ *                        does not apply to them, which pairs with the existing
+ *                        rule that they take the full entitlement at once
+ *                        rather than ramping from the base.
+ *   everyone else (PH)   six months after hire.
+ *
+ * THIS ALSO MOVES THE ANNUAL RESET. `currentPtoYearStart` keys off this date,
+ * so making a Territory Manager eligible six months earlier starts their PTO
+ * year six months earlier too — which pulls older leave back into the current
+ * cycle and raises their Days Used. That is the intended reading: their year
+ * runs from their hire anniversary, not from a six-month mark they never had.
  */
 export function eligibilityDateFor(
-  employee: Pick<Employee, 'hireDate' | 'ptoRegion' | 'eligibilityDateOverride'>,
+  employee: Pick<Employee, 'hireDate' | 'jobTitle' | 'ptoRegion' | 'eligibilityDateOverride'>,
 ): string {
   if (employee.eligibilityDateOverride) return employee.eligibilityDateOverride;
   if (employee.ptoRegion === 'US') return employee.hireDate;
+  if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) return employee.hireDate;
   return eligibilityDate(employee.hireDate);
 }
 
@@ -70,10 +86,12 @@ function anniversariesSince(startIso: string, asOf: Date): number {
   return count;
 }
 
-/** Whether the employee is eligible as of `asOf` (defaults to today). */
-export function isEligible(hireDateIso: string, asOf: Date = new Date()): boolean {
-  return parseISODate(eligibilityDate(hireDateIso)).getTime() <= asOf.getTime();
-}
+// `isEligible(hireDateIso)` used to live here. Removed 2026-09-30: it applied
+// the PH six-month rule to a bare hire date, so it silently gave the wrong
+// answer for US staff, for Territory Managers in either region, and for anyone
+// with an eligibility override. It had no callers. Use
+// `eligibilityDateFor(employee)` — or `computeBalance(...).eligible`, which is
+// what every screen already reads.
 
 /**
  * Whether this employee grows/resets their PTO on their hire-date
@@ -89,20 +107,40 @@ export function isEligible(hireDateIso: string, asOf: Date = new Date()): boolea
  * job title — see the rules documented next to the constants in
  * `lib/theme.ts`.
  *
- * Returns 0 before the employee clears the 6-month eligibility rule; never
- * exceeds `PTO_MAX_ENTITLEMENT_DAYS` afterwards. Territory Managers get
- * `PTO_MAX_ENTITLEMENT_DAYS` immediately once eligible instead of graduating.
+ * Returns 0 for anyone who has not yet reached their eligibility date. PH
+ * staff never exceed `PTO_MAX_ENTITLEMENT_DAYS` afterwards, and Territory
+ * Managers reach it immediately once eligible instead of graduating.
+ *
+ * US staff take `fixedPtoDays`, except those on the tenure ramp
+ * (`ptoPlan === 'tenure_ramp'`), who graduate from
+ * `PTO_TENURE_RAMP_BASE_DAYS` to `PTO_TENURE_RAMP_MAX_DAYS` — a higher ceiling
+ * than the PH cap, and the one place a US hire date is load-bearing.
  */
 export function computeEntitlement(
-  employee: Pick<Employee, 'hireDate' | 'jobTitle' | 'ptoRegion' | 'fixedPtoDays' | 'eligibilityDateOverride'>,
+  employee: Pick<
+    Employee,
+    'hireDate' | 'jobTitle' | 'ptoRegion' | 'fixedPtoDays' | 'ptoPlan' | 'eligibilityDateOverride'
+  >,
   asOf: Date = new Date(),
 ): number {
   const eligible = parseISODate(eligibilityDateFor(employee));
   if (asOf.getTime() < eligible.getTime()) return 0;
 
-  // US staff hold a negotiated figure that never moves with tenure. It is the
-  // sum of their vacation, sick and personal allowances from the US sheet.
-  if (employee.ptoRegion === 'US') return employee.fixedPtoDays ?? 0;
+  if (employee.ptoRegion === 'US') {
+    // The tenure ramp: 10 days, +1 per completed year of SERVICE, capped at
+    // 15 — see PTO_TENURE_RAMP_* in lib/theme.ts. Unlike every other rule in
+    // this file it counts anniversaries of the hire date, not the eligibility
+    // date, and it ignores fixedPtoDays outright.
+    if (employee.ptoPlan === 'tenure_ramp') {
+      const days =
+        PTO_TENURE_RAMP_BASE_DAYS +
+        PTO_TENURE_RAMP_INCREMENT_DAYS * anniversariesSince(employee.hireDate, asOf);
+      return Math.min(days, PTO_TENURE_RAMP_MAX_DAYS);
+    }
+    // Otherwise a negotiated figure that never moves with tenure. It is the
+    // sum of their vacation, sick and personal allowances from the US sheet.
+    return employee.fixedPtoDays ?? 0;
+  }
 
   // PH staff start at the base and gain PTO_ANNUAL_INCREMENT_DAYS on each
   // anniversary of their ELIGIBILITY date — not their hire date, and not

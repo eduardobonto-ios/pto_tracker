@@ -86,6 +86,17 @@ export type AppRole = 'Employee' | 'Admin';
 /** PH staff accrue with tenure; US staff hold a fixed negotiated allowance. */
 export type PtoRegion = 'PH' | 'US';
 
+/**
+ * Which entitlement plan a US employee is on.
+ *
+ * `fixed`       — `fixedPtoDays`, a negotiated figure that never moves.
+ * `tenure_ramp` — derived from the hire date: 10 days, +1 per year of
+ *                 service, capped at 15. Ignores `fixedPtoDays`.
+ *
+ * Ignored for PH staff, whose entitlement is derived either way.
+ */
+export type PtoPlan = 'fixed' | 'tenure_ramp';
+
 export interface Employee {
   id: string;
   /** Row number as it appears in the legacy spreadsheet. */
@@ -110,9 +121,15 @@ export interface Employee {
   ptoRegion: PtoRegion;
   /**
    * US only: total annual days, fixed regardless of tenure. Null for PH, whose
-   * entitlement `computeEntitlement` derives instead.
+   * entitlement `computeEntitlement` derives instead. Ignored entirely when
+   * `ptoPlan` is `tenure_ramp`.
    */
   fixedPtoDays?: number;
+  /**
+   * US only: which entitlement plan applies. Defaults to `fixed`, which is
+   * every US employee except Darwin Mushrush and Daniel York.
+   */
+  ptoPlan: PtoPlan;
   /**
    * Admin-set eligibility date. When absent it is derived — hire date for US,
    * hire date + 6 months for PH.

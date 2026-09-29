@@ -107,7 +107,51 @@ export const PTO_ELIGIBILITY_MONTHS = 6;
 export const PTO_BASE_ENTITLEMENT_DAYS = 5;
 export const PTO_ANNUAL_INCREMENT_DAYS = 2;
 export const PTO_MAX_ENTITLEMENT_DAYS = 10;
-/** Get `PTO_MAX_ENTITLEMENT_DAYS` immediately once eligible — see OPEN above. */
+
+/**
+ * The US tenure ramp — `Employee.ptoPlan === 'tenure_ramp'`.
+ *
+ * From Jason Welsford's policy email: "Put Darwin and Dan at 10 days, increase
+ * them 1 day per year until they reach 5 years service. Their cap will be 15
+ * days PTO." Applied via patch_011, confirmed by Eduardo 2026-09-29.
+ *
+ * KEYED OFF THE HIRE DATE, not the eligibility date — "5 years service" means
+ * service. This is the only rule in the app for which a US hire date matters,
+ * and it is why patch_011 had to replace the approximate dates patch_008
+ * imported. The annual reset still keys off `eligibilityDateOverride`; the two
+ * dates are now different things on purpose.
+ *
+ * WHY NOT "START BOTH AT 10 TODAY": Daniel York already had a year of service,
+ * so starting him at 10 would put him at 14 at five years and the stated cap
+ * would never be reached. Deriving from service instead lands both men on
+ * exactly 15 on their fifth anniversary, at the cost of Daniel reading 11
+ * rather than 10 today.
+ *
+ * `..._YEARS_TO_MAX` is documentation, not arithmetic — the cap is enforced by
+ * `..._MAX_DAYS`. It is here so the day the base or increment changes, anyone
+ * reading this can see whether the two still agree (10 + 1 x 5 = 15).
+ */
+export const PTO_TENURE_RAMP_BASE_DAYS = 10;
+export const PTO_TENURE_RAMP_INCREMENT_DAYS = 1;
+export const PTO_TENURE_RAMP_MAX_DAYS = 15;
+export const PTO_TENURE_RAMP_YEARS_TO_MAX = 5;
+/**
+ * Territory Managers are treated differently in two ways, and both are keyed
+ * off this list:
+ *
+ *  1. ELIGIBLE FROM THEIR FIRST DAY, in either region — the PH six-month rule
+ *     does not apply to them. Confirmed by Eduardo 2026-09-30.
+ *  2. THE FULL `PTO_MAX_ENTITLEMENT_DAYS` AT ONCE once eligible, rather than
+ *     ramping from `PTO_BASE_ENTITLEMENT_DAYS`. Confirmed 2026-09-25.
+ *
+ * Together those mean a PH Territory Manager has ten days from day one. Rule 1
+ * also moves their annual reset onto their hire anniversary — see the note in
+ * `pto.ts#eligibilityDateFor`.
+ *
+ * Matching is by exact job title, so a retitle ("Senior Territory Manager")
+ * silently drops someone out of both rules. Add the variant here if that
+ * happens.
+ */
 export const PTO_TERRITORY_MANAGER_JOB_TITLES = ['Territory Manager'];
 
 /**

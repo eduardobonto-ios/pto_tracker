@@ -26,6 +26,7 @@ export function mapEmployeeRow(row: Record<string, unknown>): Employee {
     annualPtoAllowance: Number(row.annual_pto_allowance),
     ptoRegion: (row.pto_region as Employee['ptoRegion']) ?? 'PH',
     fixedPtoDays: row.fixed_pto_days == null ? undefined : Number(row.fixed_pto_days),
+    ptoPlan: (row.pto_plan as Employee['ptoPlan']) ?? 'fixed',
     eligibilityDateOverride: (row.eligibility_date_override as string) ?? undefined,
     appRole: row.app_role as Employee['appRole'],
     avatarUrl: (row.avatar_url as string) ?? undefined,

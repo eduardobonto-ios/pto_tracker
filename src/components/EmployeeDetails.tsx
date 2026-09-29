@@ -216,7 +216,13 @@ function EmployeeEditForm({
       <Field
         label="Hire date"
         required
-        help="Eligibility is six months after this date, and entitlement grows from it — so changing this moves both."
+        help={
+          employee.ptoRegion !== 'US'
+            ? 'Eligibility is six months after this date, and entitlement grows from it — so changing this moves both.'
+            : employee.ptoPlan === 'tenure_ramp'
+              ? 'Years of service count from this date, so changing it moves Total PTO. Eligibility and the annual reset follow the Eligibility date below.'
+              : 'US staff are eligible from day one. Total PTO is a fixed figure, so changing this does not move it.'
+        }
       >
         <Input
           type="date"
@@ -240,9 +246,11 @@ function EmployeeEditForm({
         />
       </Field>
       <p className="rounded-lg bg-slateish-50 px-3 py-2 text-[12px] leading-snug text-slateish-600">
-        {employee.ptoRegion === 'US'
-          ? 'Total PTO is a fixed figure for US staff and does not grow with tenure.'
-          : 'Total PTO is not set per person — it starts at 5 and gains 2 on each anniversary of the eligibility date, capped at 10.'}
+        {employee.ptoRegion !== 'US'
+          ? 'Total PTO is not set per person — it starts at 5 and gains 2 on each anniversary of the eligibility date, capped at 10.'
+          : employee.ptoPlan === 'tenure_ramp'
+            ? 'Total PTO starts at 10 and gains 1 on each anniversary of the hire date, reaching its cap of 15 at five years of service.'
+            : 'Total PTO is a fixed figure for US staff and does not grow with tenure.'}
       </p>
 
       {error && (
