@@ -1,4 +1,4 @@
-import { CalendarClock, Wallet } from 'lucide-react';
+import { CalendarClock, Hourglass, Wallet } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { ProgressBar } from '@/components/ui/Misc';
 import { EligibilityBadge } from '@/components/StatusBadge';
@@ -34,7 +34,12 @@ export function PTOBalanceCard({
 
         <div className="mt-5 flex flex-wrap items-end gap-x-8 gap-y-3">
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-navy-300">Days remaining</p>
+            <p className="text-[11px] uppercase tracking-wide text-navy-300">Available now</p>
+            {/* "of accrued", not "of totalPto". PTO is earned every two weeks,
+                so the number you can actually book against is what has accrued
+                so far — showing the year's full entitlement here would promise
+                days that have not been earned yet. The year's total is in the
+                breakdown below. */}
             <p
               className={`mt-1 text-[38px] font-bold leading-none tracking-tight ${
                 overdrawn ? 'text-danger-500' : 'text-white'
@@ -42,7 +47,7 @@ export function PTOBalanceCard({
             >
               {formatDays(balance.daysRemaining)}
               <span className="ml-1.5 text-[14px] font-semibold text-navy-300">
-                of {formatDays(balance.totalPto)}
+                of {formatDays(balance.accruedDays)} accrued
               </span>
             </p>
           </div>
@@ -90,10 +95,11 @@ export function PTOBalanceCard({
             value={formatDateLong(balance.eligibilityDate)}
             icon={<CalendarClock size={13} className="text-accent-500" />}
           />
+          <Stat label="Annual allowance" value={`${formatDays(balance.totalPto)} days`} />
           <Stat
-            label="Annual allowance"
-            value={`${formatDays(balance.totalPto)} days`}
-            className="col-span-2"
+            label="Still to accrue"
+            value={`${formatDays(balance.unaccruedDays)} days`}
+            icon={<Hourglass size={13} className="text-accent-500" />}
           />
         </div>
       )}

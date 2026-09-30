@@ -11,7 +11,7 @@ import { Drawer } from '@/components/ui/Modal';
 import { Avatar, DetailRow, ProgressBar } from '@/components/ui/Misc';
 import { EligibilityBadge, PayBadge, StatusBadge } from '@/components/StatusBadge';
 import { useApp } from '@/context/AppContext';
-import { formatDateLong, formatDateRange, formatDays } from '@/lib/utils';
+import { byFirstName, formatDateLong, formatDateRange, formatDays } from '@/lib/utils';
 import { DEPARTMENTS, type Employee } from '@/types';
 
 export function EmployeesPage() {
@@ -24,15 +24,20 @@ export function EmployeesPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return employees.filter((e) => {
-      if (department !== 'all' && e.department !== department) return false;
-      const b = balances[e.id];
-      if (eligibility === 'eligible' && !b?.eligible) return false;
-      if (eligibility === 'not-eligible' && b?.eligible) return false;
-      if (q && !`${e.name} ${e.email} ${e.jobTitle} ${e.department}`.toLowerCase().includes(q))
-        return false;
-      return true;
-    });
+    return employees
+      .filter((e) => {
+        if (department !== 'all' && e.department !== department) return false;
+        const b = balances[e.id];
+        if (eligibility === 'eligible' && !b?.eligible) return false;
+        if (eligibility === 'not-eligible' && b?.eligible) return false;
+        if (q && !`${e.name} ${e.email} ${e.jobTitle} ${e.department}`.toLowerCase().includes(q))
+          return false;
+        return true;
+      })
+      // Alphabetical by first name. This is also EmployeeTable's default sort,
+      // so the table opens in this order — and the CSV export, which reads
+      // this list rather than the table's own sorted copy, always matches it.
+      .sort(byFirstName);
   }, [employees, balances, query, department, eligibility]);
 
   const notEligible = employees.filter((e) => !balances[e.id]?.eligible);
@@ -53,6 +58,7 @@ export function EmployeesPage() {
       'Eligibility Date',
       'Eligible',
       'Total PTO',
+      'Accrued',
       'Days Used',
       'Days Remaining',
       '% Used',
@@ -69,6 +75,7 @@ export function EmployeesPage() {
         b?.eligibilityDate ?? '',
         b?.eligible ? 'Yes' : 'No',
         b?.totalPto ?? 0,
+        b?.accruedDays ?? 0,
         b?.daysUsed ?? 0,
         b?.daysRemaining ?? 0,
         `${b?.percentUsed ?? 0}%`,

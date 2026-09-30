@@ -208,12 +208,26 @@ export interface UserAccount {
 /** Derived, never stored — computed by `lib/pto.ts` from employees + requests. */
 export interface PTOBalance {
   employeeId: string;
+  /** The whole year's entitlement — what they will have accrued by year end. */
   totalPto: number;
+  /**
+   * How much of `totalPto` has actually been earned so far this PTO year,
+   * accruing biweekly — see `PTO_ACCRUAL_*` in `lib/theme.ts`. This is the
+   * figure `daysRemaining` draws against, so it is the one that answers "how
+   * much can I take right now".
+   */
+  accruedDays: number;
   /** Approved + paid days already consumed. */
   daysUsed: number;
   /** Days sitting in Pending requests — shown separately, not deducted. */
   pendingDays: number;
+  /**
+   * `accruedDays − daysUsed`. Goes negative when someone has taken more than
+   * they have earned, which is allowed on purpose.
+   */
   daysRemaining: number;
+  /** Still to be earned this year: `totalPto − accruedDays`, never negative. */
+  unaccruedDays: number;
   percentUsed: number;
   eligible: boolean;
   /** ISO date on which the employee becomes / became eligible. */

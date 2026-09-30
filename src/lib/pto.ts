@@ -7,6 +7,9 @@
  */
 
 import {
+  PTO_ACCRUAL_ENABLED,
+  PTO_ACCRUAL_PERIOD_DAYS,
+  PTO_ACCRUAL_PERIODS_PER_YEAR,
   PTO_ANNUAL_INCREMENT_DAYS,
   PTO_BASE_ENTITLEMENT_DAYS,
   PTO_ELIGIBILITY_MONTHS,
@@ -182,6 +185,44 @@ export function currentPtoYearStart(
 }
 
 
+/**
+ * How much of this PTO year's entitlement the employee has actually earned so
+ * far, accruing biweekly — see the `PTO_ACCRUAL_*` block in `lib/theme.ts`.
+ *
+ * Periods are whole `PTO_ACCRUAL_PERIOD_DAYS` steps completed since
+ * `currentPtoYearStart`, so the count is 0 on the first day of a cycle and
+ * reaches `PTO_ACCRUAL_PERIODS_PER_YEAR` by its end. Starting a fresh year at
+ * zero is the entire point of the change: it is what stops someone drawing a
+ * full year's leave the day after their anniversary and then resigning.
+ *
+ * Returns the full entitlement when accrual is switched off, which makes every
+ * caller — and `daysRemaining` in particular — collapse back to the old
+ * grant-it-up-front behaviour with no other change.
+ */
+export function accruedDays(
+  employee: Pick<
+    Employee,
+    'hireDate' | 'jobTitle' | 'ptoRegion' | 'fixedPtoDays' | 'ptoPlan' | 'eligibilityDateOverride'
+  >,
+  asOf: Date = new Date(),
+): number {
+  const entitlement = computeEntitlement(employee, asOf);
+  if (entitlement <= 0) return 0;
+  if (!PTO_ACCRUAL_ENABLED) return entitlement;
+
+  const start = parseISODate(currentPtoYearStart(employee, asOf));
+  const elapsedDays = Math.floor((asOf.getTime() - start.getTime()) / 86_400_000);
+  if (elapsedDays <= 0) return 0;
+
+  const periods = Math.min(
+    Math.floor(elapsedDays / PTO_ACCRUAL_PERIOD_DAYS),
+    PTO_ACCRUAL_PERIODS_PER_YEAR,
+  );
+  // 26 x 14 = 364, so a cycle's final day or two would otherwise round past
+  // the entitlement. Clamp rather than overshoot.
+  return round(Math.min((entitlement * periods) / PTO_ACCRUAL_PERIODS_PER_YEAR, entitlement));
+}
+
 /** Chargeable days implied by a duration selection over a date range. */
 export function computeDays(
   startIso: string,
@@ -235,17 +276,27 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
   // Entitlement is derived from Hire Date/job title rather than the legacy
   // per-employee allowance field — see `computeEntitlement` / lib/theme.ts.
   const totalPto = computeEntitlement(employee);
-  // An employee who has not cleared the 6-month rule cannot draw down yet, so
-  // their remaining balance reads 0 until their eligibility date passes.
-  const daysRemaining = eligible ? round(totalPto - daysUsed) : 0;
+  // What they have actually earned so far, which is what they can draw on.
+  const accrued = accruedDays(employee);
+  // An employee who has not cleared their eligibility date cannot draw down
+  // yet, so their remaining balance reads 0 until it passes.
+  //
+  // DELIBERATELY ALLOWED TO GO NEGATIVE. Taking more than you have accrued is
+  // permitted — the email asked for it explicitly — so this is not clamped at
+  // zero. Every screen that shows it renders a negative in red.
+  const daysRemaining = eligible ? round(accrued - daysUsed) : 0;
+  // % of the whole year consumed, not % of what's accrued — otherwise someone
+  // one pay period into a new year reads 100% after a single day off.
   const percentUsed = eligible && totalPto > 0 ? Math.round((daysUsed / totalPto) * 100) : 0;
 
   return {
     employeeId: employee.id,
     totalPto,
+    accruedDays: eligible ? accrued : 0,
     daysUsed,
     pendingDays,
     daysRemaining,
+    unaccruedDays: eligible ? round(Math.max(totalPto - accrued, 0)) : 0,
     percentUsed,
     eligible,
     eligibilityDate: eligibilityDateFor(employee),

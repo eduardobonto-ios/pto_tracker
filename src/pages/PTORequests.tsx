@@ -12,7 +12,7 @@ import { Field, Input, Select } from '@/components/ui/Field';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useApp } from '@/context/AppContext';
-import { formatDays } from '@/lib/utils';
+import { byFirstName, formatDays } from '@/lib/utils';
 import { DEPARTMENTS, PTO_STATUSES, type PTORequest } from '@/types';
 
 export function PTORequestsPage() {
@@ -30,6 +30,9 @@ export function PTORequestsPage() {
   const [myBalanceOpen, setMyBalanceOpen] = useState(false);
 
   const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  // The Employee filter is a find-a-person control, so it reads alphabetically
+  // rather than in whatever order the query returned.
+  const employeesByName = useMemo(() => [...employees].sort(byFirstName), [employees]);
 
   // Re-resolve against the live list so the drawer reflects any status change
   // made from elsewhere while it's open.
@@ -196,7 +199,7 @@ export function PTORequestsPage() {
                         onChange={(e) => setEmployeeId(e.target.value)}
                       >
                         <option value="all">All employees</option>
-                        {employees.map((e) => (
+                        {employeesByName.map((e) => (
                           <option key={e.id} value={e.id}>
                             {e.name}
                           </option>

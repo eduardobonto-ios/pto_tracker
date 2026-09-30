@@ -100,7 +100,12 @@ export function EmployeeDetails({
               the employee's stored `annualPtoAllowance` — that column is legacy
               and no calculation consults it. Showing the stored value here made
               the drawer disagree with the table, which is the bug this fixes. */}
-          <DetailRow label="Total PTO">{formatDays(balance.totalPto)} days</DetailRow>
+          <DetailRow label="Annual allowance">{formatDays(balance.totalPto)} days</DetailRow>
+          {/* Accrued is the one that matters day to day — it is what Days
+              remaining is measured against. The annual allowance above is what
+              they will have earned by the end of their PTO year. */}
+          <DetailRow label="Accrued so far">{formatDays(balance.accruedDays)} days</DetailRow>
+          <DetailRow label="Still to accrue">{formatDays(balance.unaccruedDays)} days</DetailRow>
           <DetailRow label="Days used">{formatDays(balance.daysUsed)}</DetailRow>
           <DetailRow label="Pending">{formatDays(balance.pendingDays)}</DetailRow>
           <DetailRow label="Days remaining">

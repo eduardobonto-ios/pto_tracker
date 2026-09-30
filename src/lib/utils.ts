@@ -101,3 +101,19 @@ export function generateTempPassword(length = 7): string {
   }
   return chars.join('');
 }
+
+/**
+ * Sort people by first name, A first.
+ *
+ * `Employee.name` is stored "First Last", so a plain locale compare on the
+ * whole string already orders by first name — "Amr Shweiky" before "April
+ * Lopez" before "Chris Stolzer". Written as its own comparator anyway, because
+ * the intent is not obvious from `a.name.localeCompare(b.name)` and the next
+ * person to touch it should not have to re-derive why that is enough.
+ *
+ * Case-insensitive via localeCompare's default collation, so a lowercase entry
+ * does not sink to the bottom.
+ */
+export function byFirstName<T extends { name: string }>(a: T, b: T): number {
+  return a.name.localeCompare(b.name);
+}

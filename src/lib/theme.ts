@@ -131,6 +131,45 @@ export const PTO_MAX_ENTITLEMENT_DAYS = 10;
  * `..._MAX_DAYS`. It is here so the day the base or increment changes, anyone
  * reading this can see whether the two still agree (10 + 1 x 5 = 15).
  */
+/**
+ * Biweekly accrual. From Jason Welsford's policy email: "can we have Eduard
+ * build in PTO accrued biweekly, allowing employees to go into the negative if
+ * they want? This is to protect us against using all PTO at once after their
+ * work anniversary, then quitting."
+ *
+ * WHAT CHANGED. Entitlement used to be granted whole the moment someone became
+ * eligible, and reset whole on each anniversary. It is now *earned* across the
+ * year: an employee's annual entitlement still says how much the year is
+ * worth, but `accruedDays` says how much of it they have actually banked, and
+ * that is what `daysRemaining` draws against.
+ *
+ * ANCHORED TO EACH PERSON'S OWN PTO YEAR, not to a company payroll calendar.
+ * Periods are counted in `PTO_ACCRUAL_PERIOD_DAYS` steps from
+ * `currentPtoYearStart`. Two reasons: the app has no payroll calendar and
+ * would need one supplied and maintained for two countries; and anchoring to
+ * the cycle makes exactly `PTO_ACCRUAL_PERIODS_PER_YEAR` periods fit a year,
+ * so the full entitlement lands exactly as the year closes rather than
+ * drifting. The cost is that people accrue on their own anniversary-relative
+ * dates rather than all on payday. If accrual must fall on real pay dates,
+ * this is the constant to replace with a pay-period table.
+ *
+ * 26 x 14 = 364, so the last day or two of a cycle sits at the full
+ * entitlement — `accruedDays` clamps rather than overshooting.
+ */
+export const PTO_ACCRUAL_PERIOD_DAYS = 14;
+export const PTO_ACCRUAL_PERIODS_PER_YEAR = 26;
+
+/**
+ * Whether accrual applies at all. Setting this to false restores the old
+ * grant-it-all-up-front behaviour — `accruedDays` becomes the full entitlement
+ * and `daysRemaining` goes back to entitlement minus used.
+ *
+ * It exists because accrual visibly reduces everyone's available balance on
+ * the day it ships, and a single switch is a better rollback than reverting a
+ * release.
+ */
+export const PTO_ACCRUAL_ENABLED = true;
+
 export const PTO_TENURE_RAMP_BASE_DAYS = 10;
 export const PTO_TENURE_RAMP_INCREMENT_DAYS = 1;
 export const PTO_TENURE_RAMP_MAX_DAYS = 15;

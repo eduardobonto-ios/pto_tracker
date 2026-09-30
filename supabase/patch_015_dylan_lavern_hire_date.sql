@@ -12,33 +12,34 @@
 -- produces the right answer and an override would only be a redundant copy of
 -- it -- the same trap the US rows fell into (see patch_011).
 --
---   hire date alone, old rule    eligible=false  total=0   used=0    rem=0
---   hire date alone, TM rule     eligible=true   total=10  used=2.5  rem=7.5
---   the legacy sheet             eligible=true   total=10  used=2.0  rem=8.0
---
 -- The 10 comes from the second Territory Manager rule -- the full entitlement
--- at once, no ramp from 5.
+-- at once, no ramp from 5. See the correction below for the reconciliation.
 --
 -- ---------------------------------------------------------------------------
--- TWO REQUESTS NEED A HUMAN, AND THIS PATCH DELIBERATELY LEAVES THEM ALONE:
+-- CORRECTION, 2026-09-30. An earlier version of this comment claimed two of
+-- Dylan's approved requests (PTO-2026-004, 3 days on 2026-03-02, and
+-- PTO-2026-011, 1 day on 2026-06-05) predated this hire date and needed a
+-- human decision. THEY DO NOT EXIST. Both were read out of seed.sql, but
+-- patch_005 opens with `delete from pto_requests;` and re-imports the whole
+-- table from the legacy PTO Log -- so seed.sql's request rows have not been
+-- live since that patch ran. Those two ids now belong to different people
+-- entirely (PTO-2026-004 is Josh Kirk's 2026-05-14 half day, PTO-2026-011 is
+-- Justin Mar Tizon's 2026-06-18 unpaid half day), which is exactly why a
+-- delete keyed on request id would have been dangerous.
 --
---   PTO-2026-004  2026-03-02..03-04  3.0 days  Approved/Paid  "Anniversary trip"
---   PTO-2026-011  2026-06-05         1.0 day   Approved/Paid  "Family matter"
+-- Dylan's actual leave, all of it filed after this hire date:
+--   PTO-2026-016  2026-06-19..06-22  2.0  Approved/Paid
+--   PTO-2026-035  2026-08-28..08-31  2.0  Approved/Unpaid
+--   PTO-2026-040  2026-09-01         0.5  Approved/Unpaid
 --
--- Both predate a 2026-06-15 hire date -- he cannot have taken leave before he
--- started -- and both came from the legacy PTO Log with Princes recorded as
--- reviewer. Most likely mis-attributed rows in that log.
+-- So there is nothing to clean up, and the figures reconcile exactly rather
+-- than approximately:
 --
--- Moving his hire date moves his cycle start to 2026-06-15, so these two fall
--- outside it and stop drawing down his balance. That is why Days Used drops
--- 6.5 -> 2.5. They stay in his request history, visible on his record. If they
--- are genuinely his, the hire date is wrong after all; if they belong to
--- someone else, delete or reassign them (compare patch_004, which removed
--- three requests filed before their owners were eligible).
+--   hire date alone, old rule    eligible=false  total=0   used=0    rem=0
+--   hire date alone, TM rule     eligible=true   total=10  used=2.0  rem=8.0
+--   the legacy sheet             eligible=true   total=10  used=2.0  rem=8.0
 --
--- The residual 0.5 against the sheet is PTO-2026-019 (2026-08-14, Half Day PM,
--- 0.5 Paid). The app counts it; the sheet's 2.0 does not appear to. Left as-is
--- -- the request record is the better authority.
+-- Confirmed against production by the Territory Manager reconciliation query.
 -- ---------------------------------------------------------------------------
 
 update pto_employees

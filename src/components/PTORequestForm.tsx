@@ -114,11 +114,23 @@ export function useLeaveRequestForm({
     : Infinity;
   const hasSufficientBalance = eligible && days <= daysAvailable;
 
-  // Not-yet-eligible and out-of-balance requests are still allowed through —
-  // they're just automatically filed as Unpaid instead of being blocked, so
-  // the leave type's own default only applies once eligibility and balance
-  // both check out.
-  const payStatus: PayStatus = !hasSufficientBalance
+  // GOING NEGATIVE IS ALLOWED, ON PURPOSE. The policy email asked for it
+  // outright — "allowing employees to go into the negative if they want" —
+  // and with biweekly accrual it is the ordinary case rather than an edge
+  // one: a full week booked early in a cycle costs more than has been earned
+  // yet, even though it is well inside the year's entitlement.
+  //
+  // This used to file such a request as Unpaid. That silently made the
+  // overdraw invisible, because unpaid days never deduct: the employee kept
+  // their balance and lost their pay, which is the opposite of what was
+  // asked for. Pay status now follows the leave type alone, and the shortfall
+  // shows on the balance as a negative.
+  //
+  // Eligibility is different and still gates pay. Someone who has not reached
+  // their eligibility date has no entitlement to draw against at all, so
+  // their leave is genuinely unpaid rather than borrowed.
+  const overdrawnBy = hasSufficientBalance ? 0 : round(days - daysAvailable);
+  const payStatus: PayStatus = !eligible
     ? 'Unpaid'
     : form.leaveType
       ? defaultPayStatus(form.leaveType)
@@ -187,6 +199,8 @@ export function useLeaveRequestForm({
     eligible,
     daysAvailable,
     hasSufficientBalance,
+    overdrawnBy,
+    currentUser,
     reset,
     openReview,
     confirmSubmit,
@@ -215,6 +229,8 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
     eligible,
     hasSufficientBalance,
     daysAvailable,
+    overdrawnBy,
+    currentUser,
   } = f;
   const isHalfDayLeave = form.leaveType === 'Half Day Leave';
   const durationOptions = isHalfDayLeave
@@ -318,10 +334,15 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
         <div className="flex items-start gap-2.5 rounded-xl border border-warning-100 bg-warning-50 p-3.5">
           <Info size={16} className="mt-0.5 shrink-0 text-warning-600" />
           <p className="text-[12.5px] leading-relaxed text-warning-700">
-            This request is {formatDays(days)} day(s), which exceeds the{' '}
-            {formatDays(Math.max(daysAvailable, 0))} day(s) remaining once other pending requests
-            are counted. It can still be filed, but will be charged as{' '}
-            <strong className="font-semibold">Unpaid</strong>.
+            This request is {formatDays(days)} day(s), which is{' '}
+            {formatDays(overdrawnBy)} day(s) more than{' '}
+            {selectedEmployee.id === currentUser.id ? 'you have' : `${selectedEmployee.name} has`}{' '}
+            earned so far — PTO accrues every two weeks across the year, and{' '}
+            {formatDays(Math.max(daysAvailable, 0))} day(s) are available once other pending
+            requests are counted. It can still be filed and stays{' '}
+            <strong className="font-semibold">paid</strong>; the balance will simply show{' '}
+            <strong className="font-semibold">−{formatDays(overdrawnBy)}</strong> until enough has
+            accrued to cover it.
           </p>
         </div>
       )}
