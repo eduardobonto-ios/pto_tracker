@@ -7,9 +7,10 @@
  */
 
 import {
+  PTO_ACCRUAL_CREDIT_ON_ANNIVERSARY,
+  PTO_ACCRUAL_DAYS_PER_PERIOD,
   PTO_ACCRUAL_ENABLED,
   PTO_ACCRUAL_PERIOD_DAYS,
-  PTO_ACCRUAL_PERIODS_PER_YEAR,
   PTO_ANNUAL_INCREMENT_DAYS,
   PTO_BASE_ENTITLEMENT_DAYS,
   PTO_ELIGIBILITY_MONTHS,
@@ -189,11 +190,11 @@ export function currentPtoYearStart(
  * How much of this PTO year's entitlement the employee has actually earned so
  * far, accruing biweekly — see the `PTO_ACCRUAL_*` block in `lib/theme.ts`.
  *
- * Periods are whole `PTO_ACCRUAL_PERIOD_DAYS` steps completed since
- * `currentPtoYearStart`, so the count is 0 on the first day of a cycle and
- * reaches `PTO_ACCRUAL_PERIODS_PER_YEAR` by its end. Starting a fresh year at
- * zero is the entire point of the change: it is what stops someone drawing a
- * full year's leave the day after their anniversary and then resigning.
+ * One credit lands on the anniversary itself and another every
+ * `PTO_ACCRUAL_PERIOD_DAYS`, `PTO_ACCRUAL_DAYS_PER_PERIOD` at a time, until
+ * the annual entitlement is reached — the shape Princes was given, worked
+ * through on her own 1 January / ten-credit case in `lib/theme.ts`. The year
+ * is not divided up; it is earned a day at a time and then stops.
  *
  * Returns the full entitlement when accrual is switched off, which makes every
  * caller — and `daysRemaining` in particular — collapse back to the old
@@ -212,15 +213,15 @@ export function accruedDays(
 
   const start = parseISODate(currentPtoYearStart(employee, asOf));
   const elapsedDays = Math.floor((asOf.getTime() - start.getTime()) / 86_400_000);
-  if (elapsedDays <= 0) return 0;
+  if (elapsedDays < 0) return 0;
 
-  const periods = Math.min(
-    Math.floor(elapsedDays / PTO_ACCRUAL_PERIOD_DAYS),
-    PTO_ACCRUAL_PERIODS_PER_YEAR,
-  );
-  // 26 x 14 = 364, so a cycle's final day or two would otherwise round past
-  // the entitlement. Clamp rather than overshoot.
-  return round(Math.min((entitlement * periods) / PTO_ACCRUAL_PERIODS_PER_YEAR, entitlement));
+  // The day-one credit, plus one for every completed fortnight since.
+  const periods =
+    (PTO_ACCRUAL_CREDIT_ON_ANNIVERSARY ? 1 : 0) +
+    Math.floor(elapsedDays / PTO_ACCRUAL_PERIOD_DAYS);
+  // Accrual stops at the entitlement rather than continuing to the year end,
+  // so a ten-day entitlement is fully banked after ten periods.
+  return round(Math.min(periods * PTO_ACCRUAL_DAYS_PER_PERIOD, entitlement));
 }
 
 /** Chargeable days implied by a duration selection over a date range. */

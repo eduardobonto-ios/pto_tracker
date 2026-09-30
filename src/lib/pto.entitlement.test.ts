@@ -177,40 +177,41 @@ check('US Territory Manager takes fixed days, not 10',
   computeEntitlement(us({ jobTitle: 'Territory Manager', fixedPtoDays: 20 }), AS_OF), 20);
 
 // --- biweekly accrual ------------------------------------------------------
-// 26 periods of 14 days, counted from the employee's own PTO year start.
-// A US 'fixed' 26-day case would divide evenly; these are the real shapes.
-//
-// Chris Stolzer: 20 days, cycle starts 2026-08-11. By AS_OF (25 Sep 2026)
-// 45 days have passed = 3 whole periods -> 20 * 3/26 = 2.3.
-check('accrues 3 periods into a cycle',
-  accruedDays(us({ fixedPtoDays: 20, hireDate: '2008-08-11', eligibilityDateOverride: '2026-08-11' }), AS_OF),
-  2.3);
-// Day one of a cycle is zero — the whole point of the change.
-check('a fresh cycle starts at zero',
-  accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-09-25', eligibilityDateOverride: '2026-09-25' }), AS_OF), 0);
-// 13 days in is still zero: periods are whole, not pro-rated daily.
-check('a part period accrues nothing',
-  accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-09-12', eligibilityDateOverride: '2026-09-12' }), AS_OF), 0);
-check('one whole period accrues one 26th',
-  accruedDays(us({ fixedPtoDays: 26, hireDate: '2020-09-11', eligibilityDateOverride: '2026-09-11' }), AS_OF), 1);
-// Late in a cycle it clamps to the entitlement rather than overshooting:
-// 26 x 14 = 364, so days 364 and 365 would otherwise exceed it.
-check('clamps at the full entitlement near cycle end',
-  accruedDays(us({ fixedPtoDays: 20, hireDate: '2015-09-26', eligibilityDateOverride: '2025-09-26' }), AS_OF), 20);
+// One credit on the anniversary, +1 every 14 days, stopping at the
+// entitlement. These four cases ARE Princes's worked example: a 1 January
+// anniversary on ten credits reading 1, 2, 3, 4 on Jan 1 / 15 / 30 / Feb 15.
+// An earlier attempt divided the entitlement by 26 and produced 0, 0.4, 0.8,
+// 1.2 on the same dates, so these are the cases that pin the rate.
+const janFirst = (asOf: Date) =>
+  accruedDays(
+    ph({ jobTitle: 'Territory Manager', hireDate: '2020-01-01' }), // TM -> 10 days, eligible day one
+    asOf,
+  );
+check('Princes: Jan 1 -> 1 credit', janFirst(new Date(2027, 0, 1)), 1);
+check('Princes: Jan 15 -> 2', janFirst(new Date(2027, 0, 15)), 2);
+check('Princes: Jan 30 -> 3', janFirst(new Date(2027, 0, 30)), 3);
+check('Princes: Feb 15 -> 4', janFirst(new Date(2027, 1, 15)), 4);
+// Accrual stops at the entitlement instead of running to the year end: ten
+// credits are fully banked ten periods in, around mid-May.
+check('ten days are fully accrued after ten periods',
+  janFirst(new Date(2027, 4, 20)), 10);
+check('and does not keep climbing past the entitlement',
+  janFirst(new Date(2027, 10, 1)), 10);
+// A bigger entitlement simply takes longer to fill.
+check('20 days is not yet full at ten periods',
+  accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-01-01', eligibilityDateOverride: '2020-01-01' }),
+    new Date(2027, 4, 20)), 10);
+// Day one of a cycle is never empty — that was the part Princes was clearest
+// about, and the part the first attempt got wrong.
+check('a fresh cycle opens with a credit, not zero',
+  accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-09-25', eligibilityDateOverride: '2026-09-25' }), AS_OF), 1);
+// Periods are whole: 13 days in is still the day-one credit alone.
+check('a part period accrues nothing further',
+  accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-09-12', eligibilityDateOverride: '2026-09-12' }), AS_OF), 1);
 // Nothing accrues before eligibility, because there is no entitlement yet.
 check('not yet eligible accrues nothing',
   accruedDays(ph({ hireDate: '2026-05-26' }), AS_OF), 0);
-// A Territory Manager accrues against 10 from their hire date, not from a
-// six-month mark — the day-one rule moves the cycle, so it moves accrual too.
-// Cycle starts 2026-02-17; 220 days to AS_OF = 15 periods -> 10 * 15/26 = 5.8.
-check('TM accrues from the hire anniversary',
-  accruedDays(tm({ hireDate: '2025-02-17' }), AS_OF), 5.8);
-// The same dates without the TM title: eligible 2025-08-17, so the cycle only
-// started 2026-08-17 (39 days = 2 periods) against a 7-day entitlement.
-// Six times less accrued from one job title — the two rules compose.
-check('a non-TM on the same dates accrues from the six-month mark',
-  accruedDays(ph({ hireDate: '2025-02-17' }), AS_OF), 0.5);
-// Accrual never exceeds the entitlement it is dividing up.
+// Accrual can never exceed the entitlement it is filling.
 check('accrued never exceeds the annual entitlement',
   accruedDays(ph({ hireDate: '2022-09-26' }), AS_OF) <= computeEntitlement(ph({ hireDate: '2022-09-26' }), AS_OF),
   true);

@@ -153,11 +153,37 @@ export const PTO_MAX_ENTITLEMENT_DAYS = 10;
  * dates rather than all on payday. If accrual must fall on real pay dates,
  * this is the constant to replace with a pay-period table.
  *
- * 26 x 14 = 364, so the last day or two of a cycle sits at the full
- * entitlement — `accruedDays` clamps rather than overshooting.
+ * THE RATE IS ONE WHOLE DAY PER PERIOD, NOT THE YEAR SPREAD ACROSS 26. Princes
+ * spelled out what she was told to expect, for a 1 January anniversary on ten
+ * credits:
+ *
+ *     January 1 - 1 pto credit
+ *     jan 15 - +1
+ *     jan 30 - +1
+ *     feb 15 - +1
+ *
+ * "instead of yung 10 PTO credits ko ay makukuha ko agad sa January 1,
+ * magiging accrual sya .. hindi sya sabay2 ibibigay."
+ *
+ * One credit lands on the anniversary itself and another every fortnight, and
+ * accrual simply stops once the annual entitlement is reached — so the year is
+ * not divided up, it is earned a day at a time until it runs out. A first
+ * attempt divided the entitlement by 26 instead, which produced 0, 0.4, 0.8,
+ * 1.2 on her four dates against the 1, 2, 3, 4 she was expecting.
+ *
+ * `PTO_ACCRUAL_CREDIT_ON_ANNIVERSARY` is the day-one credit. Without it the
+ * first fortnight of every cycle has nothing available at all, which is not
+ * what she was told.
+ *
+ * CONSEQUENCE WORTH KNOWING: a flat day per period means the smaller the
+ * entitlement, the sooner someone is fully accrued. Ten days is reached in ten
+ * periods — about 4.5 months — and a five-day PH entitlement in ten weeks.
+ * Dividing by 26 would instead stretch every entitlement across the whole
+ * year. This is the rate Princes was given, so it is the one implemented.
  */
 export const PTO_ACCRUAL_PERIOD_DAYS = 14;
-export const PTO_ACCRUAL_PERIODS_PER_YEAR = 26;
+export const PTO_ACCRUAL_DAYS_PER_PERIOD = 1;
+export const PTO_ACCRUAL_CREDIT_ON_ANNIVERSARY = true;
 
 /**
  * Whether accrual applies at all. Setting this to false restores the old
