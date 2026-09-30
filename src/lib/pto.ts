@@ -264,11 +264,21 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
   const mine = requests.filter(
     (r) => r.employeeId === employee.id && r.startDate >= periodStart,
   );
-  const daysUsed = round(
-    mine
-      .filter((r) => r.status === 'Approved' && r.payStatus === 'Paid')
-      .reduce((sum, r) => sum + r.days, 0),
+  const chargeable = mine.filter((r) => r.status === 'Approved' && r.payStatus === 'Paid');
+  const daysUsed = round(chargeable.reduce((sum, r) => sum + r.days, 0));
+  // Leave that has already started draws against what has been accrued so
+  // far; leave still to come does not. Without this split, anyone who books
+  // ahead reads as overdrawn on days they have not taken — Chris Stolzer
+  // showed -4.2 against 3.0 days of October-to-December bookings when the
+  // leave he had actually taken put him at -1.2.
+  //
+  // The boundary is the request's START date, so a leave that is underway
+  // counts in full from its first day rather than accruing partway through.
+  const todayIso = toISODate(new Date());
+  const daysTaken = round(
+    chargeable.filter((r) => r.startDate <= todayIso).reduce((sum, r) => sum + r.days, 0),
   );
+  const daysScheduled = round(daysUsed - daysTaken);
   const pendingDays = round(
     mine.filter((r) => r.status === 'Pending').reduce((sum, r) => sum + r.days, 0),
   );
@@ -284,7 +294,11 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
   // DELIBERATELY ALLOWED TO GO NEGATIVE. Taking more than you have accrued is
   // permitted — the email asked for it explicitly — so this is not clamped at
   // zero. Every screen that shows it renders a negative in red.
-  const daysRemaining = eligible ? round(accrued - daysUsed) : 0;
+  //
+  // Measured against `daysTaken`, not `daysUsed`: future-dated approved leave
+  // is committed but not yet drawn, and will have been earned by the time it
+  // is taken.
+  const daysRemaining = eligible ? round(accrued - daysTaken) : 0;
   // % of the whole year consumed, not % of what's accrued — otherwise someone
   // one pay period into a new year reads 100% after a single day off.
   const percentUsed = eligible && totalPto > 0 ? Math.round((daysUsed / totalPto) * 100) : 0;
@@ -294,6 +308,8 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
     totalPto,
     accruedDays: eligible ? accrued : 0,
     daysUsed,
+    daysTaken,
+    daysScheduled,
     pendingDays,
     daysRemaining,
     unaccruedDays: eligible ? round(Math.max(totalPto - accrued, 0)) : 0,

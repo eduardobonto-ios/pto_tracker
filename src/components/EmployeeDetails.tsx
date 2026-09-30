@@ -107,6 +107,10 @@ export function EmployeeDetails({
           <DetailRow label="Accrued so far">{formatDays(balance.accruedDays)} days</DetailRow>
           <DetailRow label="Still to accrue">{formatDays(balance.unaccruedDays)} days</DetailRow>
           <DetailRow label="Days used">{formatDays(balance.daysUsed)}</DetailRow>
+          {/* The split that makes Days remaining add up: only leave already
+              taken is charged against what has accrued so far. */}
+          <DetailRow label="— already taken">{formatDays(balance.daysTaken)}</DetailRow>
+          <DetailRow label="— scheduled ahead">{formatDays(balance.daysScheduled)}</DetailRow>
           <DetailRow label="Pending">{formatDays(balance.pendingDays)}</DetailRow>
           <DetailRow label="Days remaining">
             <span className={balance.daysRemaining < 0 ? 'font-semibold text-danger-600' : undefined}>

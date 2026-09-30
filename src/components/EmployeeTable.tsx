@@ -26,7 +26,8 @@ type SortKey =
   | 'eligible'
   | 'totalPto'
   | 'accruedDays'
-  | 'daysUsed'
+  | 'daysTaken'
+  | 'daysScheduled'
   | 'daysRemaining'
   | 'percentUsed';
 
@@ -85,8 +86,10 @@ export function EmployeeTable({
           return b?.totalPto ?? 0;
         case 'accruedDays':
           return b?.accruedDays ?? 0;
-        case 'daysUsed':
-          return b?.daysUsed ?? 0;
+        case 'daysTaken':
+          return b?.daysTaken ?? 0;
+        case 'daysScheduled':
+          return b?.daysScheduled ?? 0;
         case 'daysRemaining':
           return b?.daysRemaining ?? 0;
         case 'percentUsed':
@@ -112,7 +115,7 @@ export function EmployeeTable({
 
   return (
     <TableShell>
-      <Table className="min-w-[1340px]">
+      <Table className="min-w-[1440px]">
         <thead>
           <tr>
             {/* Position in the current sort, so it deliberately renumbers
@@ -145,8 +148,15 @@ export function EmployeeTable({
             <SortableTh sortKey="accruedDays" sort={sort} onSort={toggleSort} align="right">
               Accrued
             </SortableTh>
-            <SortableTh sortKey="daysUsed" sort={sort} onSort={toggleSort} align="right">
-              Days Used
+            {/* Taken and Scheduled rather than one "Days Used", so the row
+                adds up on its face: Accrued - Taken = Days Remaining. The
+                combined figure the legacy sheet calls Days Used is
+                Taken + Scheduled, and is still in the drawer and the CSV. */}
+            <SortableTh sortKey="daysTaken" sort={sort} onSort={toggleSort} align="right">
+              Taken
+            </SortableTh>
+            <SortableTh sortKey="daysScheduled" sort={sort} onSort={toggleSort} align="right">
+              Scheduled
             </SortableTh>
             <SortableTh sortKey="daysRemaining" sort={sort} onSort={toggleSort} align="right">
               Days Remaining
@@ -159,7 +169,7 @@ export function EmployeeTable({
         <tbody>
           {sorted.length === 0 && (
             <EmptyState
-              colSpan={13}
+              colSpan={14}
               icon={<Users size={20} />}
               title="No employees match these filters"
             />
@@ -196,7 +206,10 @@ export function EmployeeTable({
                   {formatDays(b?.accruedDays ?? 0)}
                 </Td>
                 <Td align="right" className="tabular-nums">
-                  {formatDays(b?.daysUsed ?? 0)}
+                  {formatDays(b?.daysTaken ?? 0)}
+                </Td>
+                <Td align="right" className="tabular-nums text-slateish-500">
+                  {formatDays(b?.daysScheduled ?? 0)}
                 </Td>
                 <Td
                   align="right"

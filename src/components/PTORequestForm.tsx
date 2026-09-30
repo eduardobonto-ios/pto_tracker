@@ -8,8 +8,8 @@ import { DetailRow, PillGroup } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
 import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
 import { useApp, type NewRequestInput } from '@/context/AppContext';
-import { computeDays, defaultPayStatus, round } from '@/lib/pto';
-import { formatDateRange, formatDays, todayISO } from '@/lib/utils';
+import { accruedDays, computeDays, defaultPayStatus, round } from '@/lib/pto';
+import { formatDateRange, formatDays, parseISODate, todayISO } from '@/lib/utils';
 import {
   DURATION_TYPES,
   LEAVE_TYPES,
@@ -107,11 +107,24 @@ export function useLeaveRequestForm({
 
   const selectedBalance = balances[selectedEmployee.id];
   const eligible = selectedBalance?.eligible ?? true;
-  // Other Pending requests haven't drawn down `daysRemaining` yet, so a new
-  // request must fit what's left once they're also accounted for.
-  const daysAvailable = selectedBalance
-    ? round(selectedBalance.daysRemaining - selectedBalance.pendingDays)
-    : Infinity;
+
+  // MEASURED AS OF THE LEAVE'S OWN START DATE, not today. Accrual keeps
+  // earning while a request sits in the future, so booking December leave in
+  // September has to be checked against what will have accrued by December —
+  // otherwise every advance booking looks like an overdraft and the warning
+  // becomes noise people learn to ignore.
+  //
+  // Everything already committed comes out of that: leave taken, leave
+  // scheduled, and other Pending requests, which have not drawn down any
+  // balance yet but will if approved.
+  const daysAvailable = useMemo(() => {
+    if (!selectedBalance) return Infinity;
+    const at = form.startDate ? parseISODate(form.startDate) : new Date();
+    return round(
+      accruedDays(selectedEmployee, at) - selectedBalance.daysUsed - selectedBalance.pendingDays,
+    );
+  }, [selectedBalance, selectedEmployee, form.startDate]);
+
   const hasSufficientBalance = eligible && days <= daysAvailable;
 
   // GOING NEGATIVE IS ALLOWED, ON PURPOSE. The policy email asked for it
@@ -337,7 +350,7 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
             This request is {formatDays(days)} day(s), which is{' '}
             {formatDays(overdrawnBy)} day(s) more than{' '}
             {selectedEmployee.id === currentUser.id ? 'you have' : `${selectedEmployee.name} has`}{' '}
-            earned so far — PTO accrues every two weeks across the year, and{' '}
+            will have earned by then — PTO accrues every two weeks across the year, and{' '}
             {formatDays(Math.max(daysAvailable, 0))} day(s) are available once other pending
             requests are counted. It can still be filed and stays{' '}
             <strong className="font-semibold">paid</strong>; the balance will simply show{' '}

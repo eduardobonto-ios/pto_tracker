@@ -217,13 +217,27 @@ export interface PTOBalance {
    * much can I take right now".
    */
   accruedDays: number;
-  /** Approved + paid days already consumed. */
+  /**
+   * Every approved + paid day in this PTO year, whether it has happened yet or
+   * not. This is the figure the legacy spreadsheet calls "Days Used", kept
+   * that way so the two still reconcile — it is `daysTaken + daysScheduled`.
+   */
   daysUsed: number;
+  /** Approved + paid leave that has already started. Draws against accrual. */
+  daysTaken: number;
+  /**
+   * Approved + paid leave dated in the future. Committed, but deliberately NOT
+   * charged against today's accrual — by the time it is taken it will have
+   * been earned. Booking Christmas leave in September should not read as an
+   * overdraft in September.
+   */
+  daysScheduled: number;
   /** Days sitting in Pending requests — shown separately, not deducted. */
   pendingDays: number;
   /**
-   * `accruedDays − daysUsed`. Goes negative when someone has taken more than
-   * they have earned, which is allowed on purpose.
+   * `accruedDays − daysTaken`: what is genuinely available right now. Goes
+   * negative when someone has taken more than they have earned, which is
+   * allowed on purpose.
    */
   daysRemaining: number;
   /** Still to be earned this year: `totalPto − accruedDays`, never negative. */

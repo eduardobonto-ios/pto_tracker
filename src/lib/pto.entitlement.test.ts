@@ -4,8 +4,15 @@
 // Covers the PH/US entitlement split confirmed with Princes 2026-09-24/25.
 // This decides how much leave real people get, so the cases below are the ones
 // that would be expensive to get wrong.
-import { accruedDays, computeEntitlement, currentPtoYearStart, eligibilityDateFor } from './pto';
-import type { Employee } from '@/types';
+import {
+  accruedDays,
+  round,
+  computeBalance,
+  computeEntitlement,
+  currentPtoYearStart,
+  eligibilityDateFor,
+} from './pto';
+import type { Employee, PTORequest } from '@/types';
 
 let pass = 0,
   fail = 0;
@@ -207,6 +214,45 @@ check('a non-TM on the same dates accrues from the six-month mark',
 check('accrued never exceeds the annual entitlement',
   accruedDays(ph({ hireDate: '2022-09-26' }), AS_OF) <= computeEntitlement(ph({ hireDate: '2022-09-26' }), AS_OF),
   true);
+
+// --- taken vs scheduled ----------------------------------------------------
+// computeBalance reads the real clock, so these build dates relative to today
+// rather than to AS_OF — otherwise the suite would rot.
+const shift = (days: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const leave = (id: string, startIso: string, days: number): PTORequest =>
+  ({
+    id, employeeId: 'split', requestDate: startIso, leaveType: 'Vacation Leave',
+    startDate: startIso, endDate: startIso, durationType: 'Full Day', days,
+    status: 'Approved', payStatus: 'Paid', coverage: '', reason: '', notes: '',
+    timeline: [],
+  }) as PTORequest;
+
+// Eligible a year ago, so the cycle is well underway and plenty has accrued.
+const splitter = us({
+  id: 'split', fixedPtoDays: 20, hireDate: shift(-400), eligibilityDateOverride: shift(-200),
+}) as Employee;
+const splitBalance = computeBalance(splitter, [
+  leave('past-1', shift(-30), 2),
+  leave('past-2', shift(-1), 1),
+  leave('future-1', shift(30), 3),
+]);
+
+check('daysUsed still counts every approved day, as the sheet does',
+  splitBalance.daysUsed, 6);
+check('daysTaken counts only leave that has started', splitBalance.daysTaken, 3);
+check('daysScheduled counts only leave still to come', splitBalance.daysScheduled, 3);
+check('taken + scheduled reconciles back to daysUsed',
+  splitBalance.daysTaken + splitBalance.daysScheduled, splitBalance.daysUsed);
+// The bug this fixes: booking ahead must not read as an overdraft today.
+check('remaining is measured against taken, not used',
+  splitBalance.daysRemaining, round(splitBalance.accruedDays - splitBalance.daysTaken));
+// Leave starting today counts as taken the moment it begins, not partway in.
+check('leave starting today counts as taken',
+  computeBalance(splitter, [leave('today', shift(0), 1)]).daysTaken, 1);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

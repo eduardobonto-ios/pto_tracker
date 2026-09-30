@@ -60,6 +60,8 @@ export function EmployeesPage() {
       'Total PTO',
       'Accrued',
       'Days Used',
+      'Taken',
+      'Scheduled',
       'Days Remaining',
       '% Used',
     ];
@@ -77,6 +79,8 @@ export function EmployeesPage() {
         b?.totalPto ?? 0,
         b?.accruedDays ?? 0,
         b?.daysUsed ?? 0,
+        b?.daysTaken ?? 0,
+        b?.daysScheduled ?? 0,
         b?.daysRemaining ?? 0,
         `${b?.percentUsed ?? 0}%`,
       ];

@@ -53,9 +53,17 @@ export function PTOBalanceCard({
           </div>
           <div className="flex gap-6">
             <div>
-              <p className="text-[11px] uppercase tracking-wide text-navy-300">Used</p>
+              {/* Leave already taken — the figure charged against accrual. */}
+              <p className="text-[11px] uppercase tracking-wide text-navy-300">Taken</p>
               <p className="mt-1 text-lg font-bold text-white">
-                {formatDays(balance.daysUsed)}
+                {formatDays(balance.daysTaken)}
+              </p>
+            </div>
+            <div>
+              {/* Approved, but still to come — committed, not yet drawn. */}
+              <p className="text-[11px] uppercase tracking-wide text-navy-300">Scheduled</p>
+              <p className="mt-1 text-lg font-bold text-accent-300">
+                {formatDays(balance.daysScheduled)}
               </p>
             </div>
             <div>
