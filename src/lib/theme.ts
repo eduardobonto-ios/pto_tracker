@@ -86,16 +86,25 @@ export const PTO_ELIGIBILITY_MONTHS = 6;
  *
  *  PH: eligible six months after hire. Entitlement starts at
  *      `PTO_BASE_ENTITLEMENT_DAYS` and gains `PTO_ANNUAL_INCREMENT_DAYS` on
- *      every anniversary of the ELIGIBILITY date, capped at
- *      `PTO_MAX_ENTITLEMENT_DAYS`.
- *  US: eligible from day one. Entitlement is `Employee.fixedPtoDays` — a
- *      negotiated per-person figure (the sum of their vacation, sick and
- *      personal days) that never grows with tenure.
+ *      every anniversary of the HIRE date, capped at
+ *      `PTO_MAX_ENTITLEMENT_DAYS` — 5, +2 a year, up to 10.
+ *  US: eligible from day one. Entitlement is `Employee.fixedPtoDays`, a
+ *      negotiated per-person figure that never grows with tenure — unless
+ *      they are on the tenure ramp (`ptoPlan`), which is 10, +1 a year, up to
+ *      15, also counted from the hire date.
  *
- * Both regions reset their days-used counter on the anniversary of the
- * eligibility date. `Employee.eligibilityDateOverride` replaces the derived
- * eligibility date for either region, and therefore moves both the ramp and
- * the reset.
+ * EVERYTHING ANNUAL NOW KEYS OFF THE HIRE DATE. Confirmed by Eduardo
+ * 2026-10-02, replacing the eligibility-anniversary rule confirmed with
+ * Princes 2026-09-24. Both the yearly increase and the days-used reset count
+ * hire anniversaries, so they no longer sit six months apart for PH staff.
+ *
+ * The eligibility date is now only ever the answer to "can this person take
+ * leave yet" — it no longer drives the ramp or the cycle.
+ * `Employee.eligibilityDateOverride` still replaces it, and still overrides
+ * the reset anchor, because that is the escape hatch for a cycle the derived
+ * rules get wrong. It deliberately does NOT move the ramp: years of service
+ * are years of service, and Daniel York's override would otherwise cost him
+ * the year he has already worked.
  *
  * The old June-1 / hire-date cohort split is gone, along with
  * `usesAnniversaryReset`. Everything now keys off eligibility.

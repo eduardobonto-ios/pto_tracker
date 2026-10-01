@@ -114,26 +114,36 @@ check('ramp leaves the reset on the eligibility override',
 // --- PH: base 5, +2 per eligibility anniversary, cap 10 --------------------
 // Hired 2025-01-08 → eligible 2025-07-08 → one anniversary passed (2026-07-08).
 check('PH one anniversary → 7', computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 7);
-// Hired 2025-06-30 → eligible 2025-12-30 → none passed yet.
-check('PH no anniversary yet → 5', computeEntitlement(ph({ hireDate: '2025-06-30' }), AS_OF), 5);
-// Hired 2023-07-10 → eligible 2024-01-10 → two passed → 9.
-check('PH two anniversaries → 9', computeEntitlement(ph({ hireDate: '2023-07-10' }), AS_OF), 9);
+// Hired 2025-06-30 → one HIRE anniversary passed (2026-06-30) → 7. Under the
+// old eligibility rule this read 5, because 2025-12-30 + 1yr had not arrived.
+check('PH one hire anniversary → 7', computeEntitlement(ph({ hireDate: '2025-06-30' }), AS_OF), 7);
+// Hired 2023-07-10 → three hire anniversaries → 5 + 6 = 11, capped to 10.
+check('PH three hire anniversaries cap at 10',
+  computeEntitlement(ph({ hireDate: '2023-07-10' }), AS_OF), 10);
 // Hired 2022-09-26 → eligible 2023-03-26 → three passed → 11, capped.
 check('PH caps at 10', computeEntitlement(ph({ hireDate: '2022-09-26' }), AS_OF), 10);
 check('PH not yet eligible → 0', computeEntitlement(ph({ hireDate: '2026-05-26' }), AS_OF), 0);
-// The ramp must key off ELIGIBILITY, not hire date — these differ by 6 months.
-check('PH ramp keys off eligibility not hire',
-  computeEntitlement(ph({ hireDate: '2025-06-23' }), AS_OF), 5);
-check('override shifts the ramp too',
+// The ramp keys off the HIRE date. These two differ by six months, so this is
+// the case that catches a regression to the old eligibility-based rule.
+check('PH ramp keys off hire, not eligibility',
+  computeEntitlement(ph({ hireDate: '2025-06-23' }), AS_OF), 7);
+// An override moves eligibility and the reset, but NOT the ramp — years of
+// service are years of service. Same hire date, same answer.
+check('an override does not shift the ramp',
   computeEntitlement(ph({ hireDate: '2025-06-23', eligibilityDateOverride: '2025-01-01' }), AS_OF), 7);
 
 // --- PTO year reset --------------------------------------------------------
-check('PH year starts on eligibility anniversary',
-  currentPtoYearStart(ph({ hireDate: '2025-01-08' }), AS_OF), '2026-07-08');
+check('PH year starts on the hire anniversary',
+  currentPtoYearStart(ph({ hireDate: '2025-01-08' }), AS_OF), '2026-01-08');
 check('US year starts on hire anniversary (= eligibility)',
   currentPtoYearStart(us({ hireDate: '2025-12-01' }), AS_OF), '2025-12-01');
-check('before any anniversary the cycle starts at eligibility',
-  currentPtoYearStart(ph({ hireDate: '2025-06-30' }), AS_OF), '2025-12-30');
+check('the cycle follows the hire anniversary once one has passed',
+  currentPtoYearStart(ph({ hireDate: '2025-06-30' }), AS_OF), '2026-06-30');
+// Floor: hired 2025-11-01, eligible 2026-05-01, and the next hire anniversary
+// is still ahead — so the cycle opens at eligibility, not eight months before
+// they could take anything.
+check('a cycle cannot open before eligibility',
+  currentPtoYearStart(ph({ hireDate: '2025-11-01' }), AS_OF), '2026-05-01');
 check('before eligibility the cycle floors at eligibility',
   currentPtoYearStart(ph({ hireDate: '2026-05-26' }), AS_OF), '2026-11-26');
 check('reset follows the override',
@@ -157,8 +167,8 @@ check('TM hired 2026-06-15 is eligible and on the max',
   computeEntitlement(tm({ hireDate: '2026-06-15' }), AS_OF), 10);
 check('TM gets the max with no anniversaries passed',
   computeEntitlement(tm({ hireDate: '2025-06-15' }), AS_OF), 10);
-check('same dates, non-TM, reads the base',
-  computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 5);
+check('same dates, non-TM, climbs the PH ramp instead',
+  computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 7);
 // A future hire date is still a future hire date — day one is not day zero.
 check('TM hired after today is not yet entitled',
   computeEntitlement(tm({ hireDate: '2026-10-01' }), AS_OF), 0);
@@ -170,8 +180,10 @@ check('override can delay a TM past their hire date',
 // anniversary rather than from a six-month mark.
 check('TM year starts on the hire anniversary',
   currentPtoYearStart(tm({ hireDate: '2025-02-17' }), AS_OF), '2026-02-17');
-check('same hire date, non-TM, resets six months later',
-  currentPtoYearStart(ph({ hireDate: '2025-02-17' }), AS_OF), '2026-08-17');
+// Both now reset on the hire anniversary, TM or not — the six-month split in
+// the reset is gone, and only eligibility still distinguishes them.
+check('same hire date, non-TM, resets on the same day',
+  currentPtoYearStart(ph({ hireDate: '2025-02-17' }), AS_OF), '2026-02-17');
 // US takes precedence — fixedPtoDays wins even for a Territory Manager.
 check('US Territory Manager takes fixed days, not 10',
   computeEntitlement(us({ jobTitle: 'Territory Manager', fixedPtoDays: 20 }), AS_OF), 20);

@@ -146,14 +146,25 @@ export function computeEntitlement(
     return employee.fixedPtoDays ?? 0;
   }
 
-  // PH staff start at the base and gain PTO_ANNUAL_INCREMENT_DAYS on each
-  // anniversary of their ELIGIBILITY date — not their hire date, and not
-  // June 1. Confirmed with Princes 2026-09-24.
+  // Territory Managers hold a contractual ten with no increase language, so
+  // they take the maximum at once rather than climbing to it. Whether they
+  // move onto the tenure ramp instead is still with Gil.
   if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) {
     return PTO_MAX_ENTITLEMENT_DAYS;
   }
+  // PH staff start at the base and gain PTO_ANNUAL_INCREMENT_DAYS on each
+  // anniversary of their HIRE date. Confirmed by Eduardo 2026-10-02 — this
+  // replaces the eligibility-anniversary rule confirmed with Princes
+  // 2026-09-24, and brings PH into line with the US ramp, which has always
+  // counted service from the hire date.
+  //
+  // Eligibility still gates whether anything is drawable at all (the early
+  // return above), so a PH employee seven months in is eligible on 5 days and
+  // reaches 7 at their first hire anniversary rather than their eighteenth
+  // month.
   const days =
-    PTO_BASE_ENTITLEMENT_DAYS + PTO_ANNUAL_INCREMENT_DAYS * anniversariesSince(eligibilityDateFor(employee), asOf);
+    PTO_BASE_ENTITLEMENT_DAYS +
+    PTO_ANNUAL_INCREMENT_DAYS * anniversariesSince(employee.hireDate, asOf);
   return Math.min(days, PTO_MAX_ENTITLEMENT_DAYS);
 }
 
@@ -170,19 +181,34 @@ export function currentPtoYearStart(
   employee: Pick<Employee, 'hireDate' | 'jobTitle' | 'ptoRegion' | 'eligibilityDateOverride'>,
   asOf: Date = new Date(),
 ): string {
-  // Both regions now reset on the anniversary of the ELIGIBILITY date — the
-  // old split between hire-date and June-1 cohorts is gone. Confirmed with
-  // Princes 2026-09-24. Before eligibility there is no cycle to be in, so the
-  // eligibility date itself is the floor.
+  // THE ANCHOR IS THE HIRE DATE, not the eligibility date. Confirmed by
+  // Eduardo 2026-10-02, replacing the eligibility-anniversary rule confirmed
+  // with Princes 2026-09-24 — the yearly increase and the reset both key off
+  // the hire date now, so they stay six months apart no longer.
+  //
+  // An `eligibilityDateOverride` still wins, because it is the admin escape
+  // hatch for a cycle the derived rules get wrong — it is also what carries
+  // the US staff's cycle start from the Welsford sheet. Every one of those
+  // overrides shares its month and day with the hire date, so this change
+  // moves no US cycle; it moves the PH ones six months earlier.
+  const anchorIso = employee.eligibilityDateOverride || employee.hireDate;
   const eligibleIso = eligibilityDateFor(employee);
   const eligible = parseISODate(eligibleIso);
+  // Before eligibility there is no cycle to be in.
   if (asOf.getTime() < eligible.getTime()) return eligibleIso;
 
-  const passed = anniversariesSince(eligibleIso, asOf);
-  if (passed === 0) return eligibleIso;
-  const start = new Date(eligible.getFullYear() + passed, eligible.getMonth(), eligible.getDate());
-  if (start.getMonth() !== eligible.getMonth()) start.setDate(0);
-  return toISODate(start);
+  const anchor = parseISODate(anchorIso);
+  const passed = anniversariesSince(anchorIso, asOf);
+  let start = anchor;
+  if (passed > 0) {
+    start = new Date(anchor.getFullYear() + passed, anchor.getMonth(), anchor.getDate());
+    // Guard month-overflow the same way eligibilityDate does (Feb 29 → Feb 28).
+    if (start.getMonth() !== anchor.getMonth()) start.setDate(0);
+  }
+  // A cycle cannot begin before the employee could take any leave. PH staff
+  // hired mid-year would otherwise open a cycle months before their six-month
+  // mark and count leave they were never entitled to.
+  return start.getTime() < eligible.getTime() ? eligibleIso : toISODate(start);
 }
 
 
