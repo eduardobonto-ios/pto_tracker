@@ -88,10 +88,13 @@ export const PTO_ELIGIBILITY_MONTHS = 6;
  *      `PTO_BASE_ENTITLEMENT_DAYS` and gains `PTO_ANNUAL_INCREMENT_DAYS` on
  *      every anniversary of the HIRE date, capped at
  *      `PTO_MAX_ENTITLEMENT_DAYS` — 5, +2 a year, up to 10.
- *  US: eligible from day one. Entitlement is `Employee.fixedPtoDays`, a
- *      negotiated per-person figure that never grows with tenure — unless
- *      they are on the tenure ramp (`ptoPlan`), which is 10, +1 a year, up to
- *      15, also counted from the hire date.
+ *  US: eligible from day one. Two plans, selected by `Employee.ptoPlan`:
+ *      'fixed'       `fixedPtoDays`, a negotiated figure that never grows.
+ *                    This is the 20-day group from the policy email — "as is",
+ *                    no yearly increase.
+ *      'tenure_ramp' 10, +1 a year, capped at 15, counted from the hire date.
+ *                    Everyone on ten initial days is on this (patch_016), not
+ *                    just the two the email named.
  *
  * EVERYTHING ANNUAL NOW KEYS OFF THE HIRE DATE. Confirmed by Eduardo
  * 2026-10-02, replacing the eligibility-anniversary rule confirmed with
