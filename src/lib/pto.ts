@@ -98,27 +98,33 @@ function anniversariesSince(startIso: string, asOf: Date): number {
 // what every screen already reads.
 
 /**
- * Whether this employee grows/resets their PTO on their hire-date
- * anniversary (true) or on the legacy June 1 date (false) — see the cohort
- * rules documented next to `PTO_NEW_HIRE_COHORT_START_YEAR` in `lib/theme.ts`.
- * Territory Managers are always on the anniversary cohort, regardless of
- * hire year.
+ * The tenure ramp: `PTO_TENURE_RAMP_BASE_DAYS`, plus
+ * `PTO_TENURE_RAMP_INCREMENT_DAYS` per completed year of SERVICE, capped at
+ * `PTO_TENURE_RAMP_MAX_DAYS` — see `PTO_TENURE_RAMP_*` in `lib/theme.ts`.
+ *
+ * Unlike every other rule in this file it counts anniversaries of the hire
+ * date, not of the eligibility date, and it ignores `fixedPtoDays` outright.
  */
-
+function tenureRampDays(hireDateIso: string, asOf: Date): number {
+  const days =
+    PTO_TENURE_RAMP_BASE_DAYS +
+    PTO_TENURE_RAMP_INCREMENT_DAYS * anniversariesSince(hireDateIso, asOf);
+  return Math.min(days, PTO_TENURE_RAMP_MAX_DAYS);
+}
 
 /**
- * Annual PTO entitlement, computed purely from the employee's Hire Date and
- * job title — see the rules documented next to the constants in
+ * Annual PTO entitlement, computed purely from the employee's Hire Date, job
+ * title and plan — see the rules documented next to the constants in
  * `lib/theme.ts`.
  *
- * Returns 0 for anyone who has not yet reached their eligibility date. PH
- * staff never exceed `PTO_MAX_ENTITLEMENT_DAYS` afterwards, and Territory
- * Managers reach it immediately once eligible instead of graduating.
+ * Returns 0 for anyone who has not yet reached their eligibility date.
  *
- * US staff take `fixedPtoDays`, except those on the tenure ramp
- * (`ptoPlan === 'tenure_ramp'`), who graduate from
- * `PTO_TENURE_RAMP_BASE_DAYS` to `PTO_TENURE_RAMP_MAX_DAYS` — a higher ceiling
- * than the PH cap, and the one place a US hire date is load-bearing.
+ * Afterwards, in order:
+ *   tenure ramp   `ptoPlan === 'tenure_ramp'` in either region, and every PH
+ *                 Territory Manager by job title. 10, +1 a year, cap 15.
+ *   US otherwise  `fixedPtoDays`, a negotiated figure that never moves.
+ *   PH otherwise  `PTO_BASE_ENTITLEMENT_DAYS`, +`PTO_ANNUAL_INCREMENT_DAYS` a
+ *                 year, capped at `PTO_MAX_ENTITLEMENT_DAYS`.
  */
 export function computeEntitlement(
   employee: Pick<
@@ -131,26 +137,35 @@ export function computeEntitlement(
   if (asOf.getTime() < eligible.getTime()) return 0;
 
   if (employee.ptoRegion === 'US') {
-    // The tenure ramp: 10 days, +1 per completed year of SERVICE, capped at
-    // 15 — see PTO_TENURE_RAMP_* in lib/theme.ts. Unlike every other rule in
-    // this file it counts anniversaries of the hire date, not the eligibility
-    // date, and it ignores fixedPtoDays outright.
-    if (employee.ptoPlan === 'tenure_ramp') {
-      const days =
-        PTO_TENURE_RAMP_BASE_DAYS +
-        PTO_TENURE_RAMP_INCREMENT_DAYS * anniversariesSince(employee.hireDate, asOf);
-      return Math.min(days, PTO_TENURE_RAMP_MAX_DAYS);
-    }
+    if (employee.ptoPlan === 'tenure_ramp') return tenureRampDays(employee.hireDate, asOf);
     // Otherwise a negotiated figure that never moves with tenure. It is the
     // sum of their vacation, sick and personal allowances from the US sheet.
+    //
+    // DELIBERATELY AHEAD OF THE JOB-TITLE RULE BELOW: a US Territory Manager
+    // holds a negotiated figure like the rest of the US roster, and must not
+    // be dropped onto the ramp because of their title.
     return employee.fixedPtoDays ?? 0;
   }
 
-  // Territory Managers hold a contractual ten with no increase language, so
-  // they take the maximum at once rather than climbing to it. Whether they
-  // move onto the tenure ramp instead is still with Gil.
-  if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) {
-    return PTO_MAX_ENTITLEMENT_DAYS;
+  // PH Territory Managers are on the tenure ramp, by title rather than by
+  // column. Confirmed by Eduardo 2026-10-02 — this is Jason Welsford's "put
+  // the ValveMan Territory Managers on this same plan", which patch_011 left
+  // pending on Gil. It replaces the flat `PTO_MAX_ENTITLEMENT_DAYS` they used
+  // to take the moment they became eligible.
+  //
+  // KEYED OFF THE TITLE, NOT ONLY `ptoPlan`, because account creation always
+  // writes 'fixed' (see `AppContext#createAccount`) — a new Territory Manager
+  // would otherwise land on the PH ramp at 5 days until someone remembered to
+  // change the column by hand. patch_017 sets the column too, so the stored
+  // data and the derived rule agree.
+  //
+  // Their day-one eligibility is unchanged — see `eligibilityDateFor`. Only
+  // the number of days moved.
+  if (
+    employee.ptoPlan === 'tenure_ramp' ||
+    PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)
+  ) {
+    return tenureRampDays(employee.hireDate, asOf);
   }
   // PH staff start at the base and gain PTO_ANNUAL_INCREMENT_DAYS on each
   // anniversary of their HIRE date. Confirmed by Eduardo 2026-10-02 — this

@@ -545,8 +545,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             // New accounts are PH by default. US staff are provisioned by
             // migration with an explicit region and a fixed allowance.
             ptoRegion: 'PH',
-            // Mirrors the column default. Only read for US staff, and only
-            // migrations put anyone on the tenure ramp.
+            // Mirrors the column default. Only migrations put anyone on the
+            // tenure ramp — but a new Territory Manager still lands on it,
+            // because `computeEntitlement` reads the job title too.
             ptoPlan: 'fixed',
             appRole: input.appRole,
             active: true,

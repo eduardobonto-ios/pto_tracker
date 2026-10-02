@@ -87,13 +87,15 @@ export type AppRole = 'Employee' | 'Admin';
 export type PtoRegion = 'PH' | 'US';
 
 /**
- * Which entitlement plan a US employee is on.
+ * Which entitlement plan an employee is on.
  *
- * `fixed`       — `fixedPtoDays`, a negotiated figure that never moves.
- * `tenure_ramp` — derived from the hire date: 10 days, +1 per year of
- *                 service, capped at 15. Ignores `fixedPtoDays`.
+ * `fixed`       — US: `fixedPtoDays`, a negotiated figure that never moves.
+ *                 PH: the PH ramp, 5 days +2 a year, capped at 10.
+ * `tenure_ramp` — derived from the hire date in either region: 10 days, +1
+ *                 per year of service, capped at 15. Ignores `fixedPtoDays`.
  *
- * Ignored for PH staff, whose entitlement is derived either way.
+ * PH Territory Managers are on the tenure ramp by job title whatever this
+ * column says — see `PTO_TERRITORY_MANAGER_JOB_TITLES` in `lib/theme.ts`.
  */
 export type PtoPlan = 'fixed' | 'tenure_ramp';
 
@@ -126,8 +128,10 @@ export interface Employee {
    */
   fixedPtoDays?: number;
   /**
-   * US only: which entitlement plan applies. Defaults to `fixed`, which is
-   * every US employee except Darwin Mushrush and Daniel York.
+   * Which entitlement plan applies. Defaults to `fixed`. `tenure_ramp` is
+   * Darwin Mushrush, Daniel York, Will Berget and the four PH Territory
+   * Managers — though the Territory Managers are on the ramp by job title
+   * regardless of what this column holds.
    */
   ptoPlan: PtoPlan;
   /**

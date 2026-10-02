@@ -88,6 +88,8 @@ export const PTO_ELIGIBILITY_MONTHS = 6;
  *      `PTO_BASE_ENTITLEMENT_DAYS` and gains `PTO_ANNUAL_INCREMENT_DAYS` on
  *      every anniversary of the HIRE date, capped at
  *      `PTO_MAX_ENTITLEMENT_DAYS` — 5, +2 a year, up to 10.
+ *      Territory Managers are the exception: eligible day one, and on the
+ *      tenure ramp below rather than this one.
  *  US: eligible from day one. Two plans, selected by `Employee.ptoPlan`:
  *      'fixed'       `fixedPtoDays`, a negotiated figure that never grows.
  *                    This is the 20-day group from the policy email — "as is",
@@ -112,24 +114,31 @@ export const PTO_ELIGIBILITY_MONTHS = 6;
  * The old June-1 / hire-date cohort split is gone, along with
  * `usesAnniversaryReset`. Everything now keys off eligibility.
  *
- * `PTO_TERRITORY_MANAGER_JOB_TITLES` short-circuits PH staff to the maximum
- * the moment they are eligible, with no graduated ramp. Confirmed with Princes
- * via Eduardo 2026-09-25 — Territory Managers get the full ten immediately.
+ * `PTO_TERRITORY_MANAGER_JOB_TITLES` puts PH staff on the tenure ramp below
+ * instead of this one. Confirmed by Eduardo 2026-10-02, replacing the flat
+ * `PTO_MAX_ENTITLEMENT_DAYS` they took on becoming eligible (Princes via
+ * Eduardo 2026-09-25). They still start at ten, and now grow past it.
  */
 export const PTO_BASE_ENTITLEMENT_DAYS = 5;
 export const PTO_ANNUAL_INCREMENT_DAYS = 2;
 export const PTO_MAX_ENTITLEMENT_DAYS = 10;
 
 /**
- * The US tenure ramp — `Employee.ptoPlan === 'tenure_ramp'`.
+ * The tenure ramp — `Employee.ptoPlan === 'tenure_ramp'`, plus every PH
+ * Territory Manager by job title (see `PTO_TERRITORY_MANAGER_JOB_TITLES`).
  *
  * From Jason Welsford's policy email: "Put Darwin and Dan at 10 days, increase
  * them 1 day per year until they reach 5 years service. Their cap will be 15
  * days PTO." Applied via patch_011, confirmed by Eduardo 2026-09-29.
  *
+ * NO LONGER US-ONLY. The same email proposed putting the ValveMan Territory
+ * Managers on this plan, which patch_011 left pending on Gil; Eduardo
+ * confirmed it 2026-10-02, and patch_018 moves the four of them plus Will
+ * Berget across. Their day-one eligibility is untouched — only the number of
+ * days changed, from a flat ten to ten that grows.
+ *
  * KEYED OFF THE HIRE DATE, not the eligibility date — "5 years service" means
- * service. This is the only rule in the app for which a US hire date matters,
- * and it is why patch_011 had to replace the approximate dates patch_008
+ * service. It is why patch_011 had to replace the approximate dates patch_008
  * imported. The annual reset still keys off `eligibilityDateOverride`; the two
  * dates are now different things on purpose.
  *
@@ -218,12 +227,15 @@ export const PTO_TENURE_RAMP_YEARS_TO_MAX = 5;
  *
  *  1. ELIGIBLE FROM THEIR FIRST DAY, in either region — the PH six-month rule
  *     does not apply to them. Confirmed by Eduardo 2026-09-30.
- *  2. THE FULL `PTO_MAX_ENTITLEMENT_DAYS` AT ONCE once eligible, rather than
- *     ramping from `PTO_BASE_ENTITLEMENT_DAYS`. Confirmed 2026-09-25.
+ *  2. ON THE TENURE RAMP, for PH staff, rather than the PH ramp — ten days,
+ *     +1 a year of service, capped at fifteen. Confirmed by Eduardo
+ *     2026-10-02, replacing the flat `PTO_MAX_ENTITLEMENT_DAYS` of
+ *     2026-09-25. US Territory Managers are unaffected: their negotiated
+ *     `fixedPtoDays` still wins, because the region branch runs first.
  *
- * Together those mean a PH Territory Manager has ten days from day one. Rule 1
- * also moves their annual reset onto their hire anniversary — see the note in
- * `pto.ts#eligibilityDateFor`.
+ * Together those mean a PH Territory Manager has ten days from day one, and
+ * eleven from their first anniversary. Rule 1 also moves their annual reset
+ * onto their hire anniversary — see the note in `pto.ts#eligibilityDateFor`.
  *
  * Matching is by exact job title, so a retitle ("Senior Territory Manager")
  * silently drops someone out of both rules. Add the variant here if that

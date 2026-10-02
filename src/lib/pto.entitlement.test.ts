@@ -102,9 +102,13 @@ check('ramp still waits for a future eligibility override',
 // Mar 1 and lose a day of service.
 check('ramp clamps a Feb 29 hire date',
   computeEntitlement(ramp({ hireDate: '2024-02-29' }), AS_OF), 12);
-// ptoPlan is a US-only concept — it must not leak into the PH rules.
-check('ptoPlan is ignored for PH staff',
-  computeEntitlement(ph({ ptoPlan: 'tenure_ramp', hireDate: '2025-01-08' }), AS_OF), 7);
+// ptoPlan is no longer a US-only concept (patch_018). A PH employee put on
+// the ramp takes 10 + 1/yr, not the PH 5 + 2/yr — the same hire date reads 7
+// on the PH ramp and 11 on this one.
+check('ptoPlan now applies to PH staff too',
+  computeEntitlement(ph({ ptoPlan: 'tenure_ramp', hireDate: '2025-01-08' }), AS_OF), 11);
+check('the same PH hire date on the default plan still reads 7',
+  computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 7);
 // The ramp moves entitlement; it must NOT move the annual reset, which still
 // follows the eligibility override.
 check('ramp leaves the reset on the eligibility override',
@@ -153,7 +157,8 @@ check('reset follows the override',
 // --- Territory Managers ----------------------------------------------------
 // Two rules, both keyed off PTO_TERRITORY_MANAGER_JOB_TITLES:
 //   1. eligible from day one, either region (confirmed 2026-09-30)
-//   2. the full max at once, no ramp (confirmed 2026-09-25)
+//   2. the TENURE ramp, for PH staff — 10, +1 a year, cap 15 (confirmed
+//      2026-10-02, patch_018; was a flat 10 with no ramp)
 const tm = (over: Partial<Employee> = {}): Employee =>
   ph({ jobTitle: 'Territory Manager', ...over });
 
@@ -161,14 +166,23 @@ check('TM is eligible on the hire date, not six months later',
   eligibilityDateFor(tm({ hireDate: '2025-06-15' })), '2025-06-15');
 check('same hire date, non-TM, still waits six months',
   eligibilityDateFor(ph({ hireDate: '2025-06-15' })), '2025-12-15');
-// Dylan Lavern's real case: hired 2026-06-15. Under the old rule he was not
-// eligible until 2026-12-15 and read 0 days.
-check('TM hired 2026-06-15 is eligible and on the max',
+// Dylan Lavern's real case: hired 2026-06-15, no anniversary yet, so the ramp
+// base is all he has. This is the case that proves rule 2 did not cost him
+// anything — he read 10 under the flat rule and still reads 10.
+check('TM with no anniversary sits on the ramp base',
   computeEntitlement(tm({ hireDate: '2026-06-15' }), AS_OF), 10);
-check('TM gets the max with no anniversaries passed',
-  computeEntitlement(tm({ hireDate: '2025-06-15' }), AS_OF), 10);
+// Cleon Kemp / Josh Kirk / Amr Shweiky: one completed year, so 11 rather than
+// the flat 10 they used to read.
+check('TM with one anniversary climbs to 11',
+  computeEntitlement(tm({ hireDate: '2025-06-15' }), AS_OF), 11);
+check('TM ramp caps at 15, above the PH cap of 10',
+  computeEntitlement(tm({ hireDate: '2015-06-15' }), AS_OF), 15);
 check('same dates, non-TM, climbs the PH ramp instead',
   computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 7);
+// The ramp must not reach back past eligibility. A TM hired in the future is
+// still not eligible, so it stays 0 rather than paying out the base.
+check('TM day-one eligibility survived the move to the ramp',
+  eligibilityDateFor(tm({ hireDate: '2026-06-15' })), '2026-06-15');
 // A future hire date is still a future hire date — day one is not day zero.
 check('TM hired after today is not yet entitled',
   computeEntitlement(tm({ hireDate: '2026-10-01' }), AS_OF), 0);
@@ -194,11 +208,11 @@ check('US Territory Manager takes fixed days, not 10',
 // anniversary on ten credits reading 1, 2, 3, 4 on Jan 1 / 15 / 30 / Feb 15.
 // An earlier attempt divided the entitlement by 26 and produced 0, 0.4, 0.8,
 // 1.2 on the same dates, so these are the cases that pin the rate.
-const janFirst = (asOf: Date) =>
-  accruedDays(
-    ph({ jobTitle: 'Territory Manager', hireDate: '2020-01-01' }), // TM -> 10 days, eligible day one
-    asOf,
-  );
+// A 1 January hire with seven anniversaries behind them: the PH ramp is long
+// since capped, so this is exactly ten days on a 1 January cycle. It used to
+// be a Territory Manager, which read a flat ten — patch_018 put them on the
+// tenure ramp, where the same hire date would read fifteen.
+const janFirst = (asOf: Date) => accruedDays(ph({ hireDate: '2020-01-01' }), asOf);
 check('Princes: Jan 1 -> 1 credit', janFirst(new Date(2027, 0, 1)), 1);
 check('Princes: Jan 15 -> 2', janFirst(new Date(2027, 0, 15)), 2);
 check('Princes: Jan 30 -> 3', janFirst(new Date(2027, 0, 30)), 3);
