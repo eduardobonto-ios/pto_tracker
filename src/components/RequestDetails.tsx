@@ -21,7 +21,7 @@ import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
 import { useApp } from '@/context/AppContext';
 import type { RequestEditInput } from '@/context/AppContext';
 import { computeDays } from '@/lib/pto';
-import { formatDateLong, formatDateRange, formatDateTime, formatDays } from '@/lib/utils';
+import { formatDateLong, formatDateRange, formatDateTime, formatDays, formatLeaveLength } from '@/lib/utils';
 import {
   DURATION_TYPES,
   LEAVE_TYPES,
@@ -41,6 +41,12 @@ export function RequestDetails({ request }: { request: PTORequest }) {
 
   const employee = employees.find((e) => e.id === request.employeeId);
   const balance = employee ? balances[employee.id] : undefined;
+
+  // Paid vs unpaid is between the employee and management — "We don't need
+  // employes knowing if their coworkers leave is paid or unpaid" (Will,
+  // 2026-10-06). This drawer is reachable by deep link from the calendar, so
+  // it is the one place a colleague could otherwise read it.
+  const canSeePayStatus = isAdmin || currentUser.id === request.employeeId;
 
   // Only the requester (or an admin acting on their behalf) can cancel, and
   // only while the request is still open — a Rejected or already-Cancelled
@@ -83,7 +89,7 @@ export function RequestDetails({ request }: { request: PTORequest }) {
           </div>
           <div className="flex flex-col items-end gap-2">
             <StatusBadge status={request.status} />
-            <PayBadge payStatus={request.payStatus} />
+            {canSeePayStatus && <PayBadge payStatus={request.payStatus} />}
             <span className="font-mono text-[11px] text-slateish-400">{request.id}</span>
             {/* Admin-only. An employee editing after approval would move leave
                 a manager already signed off on — see `updateRequest`. */}
@@ -142,11 +148,15 @@ export function RequestDetails({ request }: { request: PTORequest }) {
               : ''}
           </DetailRow>
           <DetailRow label="Total days">
-            <span className="font-semibold">{formatDays(request.days)}</span>
+            <span className="font-semibold">
+              {formatLeaveLength(request.days, request.totalHours)}
+            </span>
           </DetailRow>
-          <DetailRow label="Paid / Unpaid">
-            <PayBadge payStatus={request.payStatus} />
-          </DetailRow>
+          {canSeePayStatus && (
+            <DetailRow label="Paid / Unpaid">
+              <PayBadge payStatus={request.payStatus} />
+            </DetailRow>
+          )}
           <DetailRow label="Coverage / POC">{request.coverage || 'N/A'}</DetailRow>
           <DetailRow label="Reason / notes">{request.notes}</DetailRow>
           <DetailRow label="Current status">

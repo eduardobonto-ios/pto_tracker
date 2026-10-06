@@ -30,7 +30,7 @@ import { DEPARTMENTS, LEAVE_TYPES, type OrgCalendarEvent, type PTORequest } from
  * directions share.
  */
 export function PTOCalendarPage() {
-  const { requests, employees, isAdmin } = useApp();
+  const { requests, employees, isAdmin, isManagement, currentUser } = useApp();
 
   const [department, setDepartment] = useState('all');
   const [employeeId, setEmployeeId] = useState('all');
@@ -135,6 +135,7 @@ export function PTOCalendarPage() {
             onSelect={setSelected}
             orgEvents={orgEvents}
             onRangeChange={handleRangeChange}
+            canSeePayStatus={(r) => isManagement || r.employeeId === currentUser.id}
           />
         </div>
       </div>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { departmentColor } from '@/lib/theme';
-import { cn, formatDays, toISODate } from '@/lib/utils';
+import { cn, formatLeaveLength, toISODate } from '@/lib/utils';
 import type { Employee, OrgCalendarEvent, PTORequest } from '@/types';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -48,6 +48,7 @@ export function Calendar({
   onSelect,
   orgEvents = [],
   onRangeChange,
+  canSeePayStatus = () => false,
 }: {
   requests: PTORequest[];
   employees: Employee[];
@@ -55,6 +56,13 @@ export function Calendar({
   onSelect: (request: PTORequest) => void;
   orgEvents?: OrgCalendarEvent[];
   onRangeChange?: (startIso: string, endIso: string) => void;
+  /**
+   * Whether pay status may be shown. Paid vs unpaid is nobody's business but
+   * the employee's and management's — "We don't need employes knowing if their
+   * coworkers leave is paid or unpaid" (Will, 2026-10-06). Defaults to hidden,
+   * so a new call site leaks nothing by forgetting to pass it.
+   */
+  canSeePayStatus?: (request: PTORequest) => boolean;
 }) {
   const today = new Date();
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
@@ -209,9 +217,17 @@ export function Calendar({
                     <button
                       key={`${cell.iso}-${r.id}`}
                       onClick={() => onSelect(r)}
-                      title={`${emp?.name} · ${r.leaveType} · ${formatDays(r.days)} day(s) · ${r.payStatus}`}
+                      title={[
+                        emp?.name,
+                        r.leaveType,
+                        formatLeaveLength(r.days, r.totalHours) +
+                          (r.days < 0.5 ? '' : ' day(s)'),
+                        canSeePayStatus(r) ? r.payStatus : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                       className={cn(
-                        'flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-medium',
+                        'flex w-full items-start gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-medium',
                         'transition-transform duration-100 hover:-translate-y-px hover:shadow-card',
                         pending
                           ? 'border border-dashed border-warning-500/60 bg-warning-50 text-warning-700'
@@ -226,15 +242,16 @@ export function Calendar({
                             : departmentColor[emp?.department ?? 'Other'],
                         }}
                       />
-                      <span className="truncate">
-                        {emp?.name.split(' ')[0]}
-                        {half ? ' ½' : ''}
+                      {/* Full name and how long they are off, both readable —
+                          this used to be the first name alone, truncated, with
+                          no indication of duration (Will, 2026-10-06). The
+                          chip wraps to a second line rather than clipping. */}
+                      <span className="min-w-0 flex-1 whitespace-normal break-words leading-tight">
+                        {emp?.name ?? 'Unknown'}
                       </span>
-                      {r.payStatus === 'Unpaid' && (
-                        <span className="ml-auto shrink-0 text-[9.5px] font-bold uppercase text-warning-600">
-                          U
-                        </span>
-                      )}
+                      <span className="shrink-0 font-semibold tabular-nums opacity-70">
+                        {half ? '\u00bd' : formatLeaveLength(r.days, r.totalHours)}
+                      </span>
                     </button>
                   );
                 })}

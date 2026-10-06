@@ -6,6 +6,7 @@
 // that would be expensive to get wrong.
 import {
   accruedDays,
+  computeDays,
   round,
   computeBalance,
   computeEntitlement,
@@ -280,6 +281,26 @@ check('remaining is measured against taken, not used',
 // Leave starting today counts as taken the moment it begins, not partway in.
 check('leave starting today counts as taken',
   computeBalance(splitter, [leave('today', shift(0), 1)]).daysTaken, 1);
+
+// --- short leave, in hours ------------------------------------------------
+// Will, 2026-10-06: Ryan Driscoll filed a genuine 1-hour personal leave that
+// was recorded as 0 days, because Custom Hours rounded to the nearest HALF
+// day. 1/8 = 0.125, which rounded to 0.
+const hours = (h: number) => computeDays('2026-10-08', '2026-10-08', 'Custom Hours', h);
+check("Ryan's 1 hour is no longer zero", hours(1), 0.125);
+check('2 hours is a quarter day', hours(2), 0.25);
+check('4 hours is still exactly half a day', hours(4), 0.5);
+check('8 hours is a whole day', hours(8), 1);
+// The legacy import's odd 0.8h entries have to survive the round trip.
+check('0.8 hours keeps its tenth of a day', hours(0.8), 0.1);
+check('no hours is still nothing', hours(0), 0);
+// Whole-day and half-day paths are untouched.
+check('a full day is unaffected', computeDays('2026-10-08', '2026-10-08', 'Full Day'), 1);
+check('a half day is unaffected', computeDays('2026-10-08', '2026-10-08', 'Half Day (AM)'), 0.5);
+// Short leave must actually draw down a balance, not vanish into rounding.
+const hourly = us({ id: 'split', fixedPtoDays: 20, hireDate: shift(-400), eligibilityDateOverride: shift(-200) }) as Employee;
+check('an hour of leave draws down the balance',
+  computeBalance(hourly, [leave('h1', shift(-5), hours(1))]).daysUsed, 0.13);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

@@ -14,6 +14,7 @@ import {
   PTO_ANNUAL_INCREMENT_DAYS,
   PTO_BASE_ENTITLEMENT_DAYS,
   PTO_ELIGIBILITY_MONTHS,
+  PTO_HOURS_PER_DAY,
   PTO_MAX_ENTITLEMENT_DAYS,
   PTO_TENURE_RAMP_BASE_DAYS,
   PTO_TENURE_RAMP_INCREMENT_DAYS,
@@ -276,8 +277,17 @@ export function computeDays(
   if (duration === 'Half Day (AM)' || duration === 'Half Day (PM)') return 0.5;
   if (duration === 'Custom Hours') {
     if (!totalHours || totalHours <= 0) return 0;
-    // 8-hour working day, rounded to the nearest half day.
-    return Math.round((totalHours / 8) * 2) / 2;
+    // A fraction of an 8-hour day, NOT rounded to the nearest half day.
+    //
+    // Rounding to halves silently destroyed every short request: one hour is
+    // 0.125 of a day, which rounded to 0, so Ryan Driscoll's genuine 1-hour
+    // personal leave on 2026-10-08 was filed, approved and recorded as zero
+    // days. Reported by Will 2026-10-06.
+    //
+    // Four decimals is past the precision of any time input the form can
+    // produce (it rounds to 2dp of an hour) and keeps the common cases exact:
+    // 1h = 0.125, 2h = 0.25, 4h = 0.5.
+    return Math.round((totalHours / PTO_HOURS_PER_DAY) * 10_000) / 10_000;
   }
   const start = parseISODate(startIso);
   const finish = parseISODate(end);
@@ -462,9 +472,16 @@ export function outToday(
   return employees.filter((e) => ids.has(e.id));
 }
 
-/** Round to one decimal so half-days stay exact and floats don't leak. */
+/**
+ * Round to two decimals so half-days stay exact and floats don't leak.
+ *
+ * Two rather than one since sub-half-day leave became real: an hour is 0.125
+ * of a day, and at one decimal a balance made of short requests drifted. Whole
+ * days and half days are unaffected, and `formatDays` still displays at one
+ * decimal, so no figure on screen changes shape.
+ */
 export function round(n: number): number {
-  return Math.round(n * 10) / 10;
+  return Math.round(n * 100) / 100;
 }
 
 /** Half-day / unpaid leave types are not charged against the paid allowance. */

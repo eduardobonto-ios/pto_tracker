@@ -78,6 +78,16 @@ export const APP_SUITE = 'Valveman Internal Suite';
 export const PTO_ELIGIBILITY_MONTHS = 6;
 
 /**
+ * Hours in a working day, used to convert a Custom Hours request into days.
+ *
+ * Leave is stored in days throughout — balances, entitlements and the legacy
+ * spreadsheet all speak days — so an hours-based request becomes a fraction of
+ * one. A one-hour leave is 0.125 days, and `formatLeaveLength` renders
+ * anything under half a day back as hours so nobody has to read 0.125.
+ */
+export const PTO_HOURS_PER_DAY = 8;
+
+/**
  * Annual entitlement rules (see `lib/pto.ts#computeEntitlement`). Confirmed
  * with Princes 2026-09-24/25.
  *

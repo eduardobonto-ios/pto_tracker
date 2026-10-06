@@ -1,4 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
+import { PTO_HOURS_PER_DAY } from './theme';
 import { twMerge } from 'tailwind-merge';
 
 /** Tailwind-aware className joiner. */
@@ -59,7 +60,10 @@ export function toISODate(d: Date): string {
 
 /** Render a day count, keeping the `.5` for half days and dropping `.0`. */
 export function formatDays(days: number): string {
-  return Number.isInteger(days) ? `${days}` : days.toFixed(1);
+  // Only as much precision as the number actually needs. toFixed(1) used to
+  // turn 0.75 of a day into "0.8", which is wrong on a figure someone is
+  // being paid against.
+  return Number.isInteger(days) ? `${days}` : `${Math.round(days * 100) / 100}`;
 }
 
 /** Initials for an avatar, e.g. "Josh Kirk" → "JK". */
@@ -116,4 +120,36 @@ export function generateTempPassword(length = 7): string {
  */
 export function byFirstName<T extends { name: string }>(a: T, b: T): number {
   return a.name.localeCompare(b.name);
+}
+
+/**
+ * A leave length for display, in hours when days would read as a rounding
+ * artefact.
+ *
+ * Leave is stored in days, which reads badly below half a day: Ryan Driscoll's
+ * one-hour personal leave is 0.125 days, and "0.1" tells nobody anything. Will
+ * asked for hours "if necessary" (2026-10-06), so anything under half a day
+ * renders as hours and everything else stays in days.
+ *
+ * `totalHours` is the figure the employee actually entered and is preferred
+ * when present; otherwise the hours are derived back from the stored days.
+ */
+export function formatLeaveLength(days: number, totalHours?: number): string {
+  if (days <= 0 || days >= 0.5) return formatDays(days);
+  const hours = totalHours && totalHours > 0 ? totalHours : days * PTO_HOURS_PER_DAY;
+  // Shown as entered, to two decimals. Rounding to quarter hours seemed tidier
+  // until it turned the legacy import's genuine 0.8h entries into 0.75h.
+  return `${Math.round(hours * 100) / 100}h`;
+}
+
+/**
+ * A request id with the year dropped: `PTO-2026-057` reads `PTO-057`.
+ *
+ * Display only — the stored id keeps its year, and the PTO Requests table
+ * still shows it in full in its own column, so nothing that someone might
+ * quote at support is lost. Requested by Will 2026-10-06: "remove the date
+ * next to PTO under the team members name".
+ */
+export function shortRequestId(id: string): string {
+  return id.replace(/^(PTO)-\d{4}-(.+)$/, '$1-$2');
 }

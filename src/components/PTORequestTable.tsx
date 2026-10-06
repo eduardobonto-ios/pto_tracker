@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/Table';
 import { Avatar } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
-import { formatDate, formatDays } from '@/lib/utils';
+import { formatDate, formatLeaveLength, shortRequestId } from '@/lib/utils';
 import type { Employee, PTORequest } from '@/types';
 
 /** Every column that can be sorted on. */
@@ -181,7 +181,11 @@ export function PTORequestTable({
                           <p className="truncate font-semibold text-navy-900">
                             {emp?.name ?? 'Unknown'}
                           </p>
-                          <p className="truncate text-[12px] text-slateish-400">{r.id}</p>
+                          {/* Year dropped — Will, 2026-10-06. The full id is
+                              still in its own column and in the drawer. */}
+                          <p className="truncate text-[12px] text-slateish-400">
+                            {shortRequestId(r.id)}
+                          </p>
                         </div>
                       </div>
                     </Td>
@@ -195,8 +199,10 @@ export function PTORequestTable({
                 <Td className="whitespace-nowrap tabular-nums">{formatDate(r.requestDate)}</Td>
                 <Td className="whitespace-nowrap tabular-nums">{formatDate(r.startDate)}</Td>
                 <Td className="whitespace-nowrap tabular-nums">{formatDate(r.endDate)}</Td>
+                {/* Hours below half a day, days above — a 1-hour request read
+                    as 0 before `computeDays` stopped rounding to halves. */}
                 <Td align="right" className="font-semibold tabular-nums text-navy-900">
-                  {formatDays(r.days)}
+                  {formatLeaveLength(r.days, r.totalHours)}
                 </Td>
                 <Td>
                   <StatusBadge status={r.status} />
