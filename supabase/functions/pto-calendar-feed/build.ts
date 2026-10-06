@@ -8,7 +8,6 @@ export interface RequestRow {
   start_date: string;
   end_date: string;
   duration_type: string;
-  pay_status: string;
   pto_employees: { name: string; department: string } | null;
 }
 
@@ -40,11 +39,12 @@ const compact = (iso: string) => iso.replace(/-/g, '');
 export function toVEvent(row: RequestRow, stamp: string): string[] {
   const name = row.pto_employees?.name ?? 'Employee';
   const half = row.duration_type.startsWith('Half');
-  const summary = [
-    `${name} — PTO (${row.leave_type})`,
-    half ? ' ½ day' : '',
-    row.pay_status === 'Unpaid' ? ' [Unpaid]' : '',
-  ].join('');
+  // NO PAY STATUS. This feed is subscribed by everyone, so a "[Unpaid]" tag
+  // here put a colleague's pay arrangements on every employee's Outlook
+  // calendar — "We don't need employes knowing if their coworkers leave is
+  // paid or unpaid" (Will, 2026-10-06). Leave reasons were already excluded
+  // for the same reason; pay status belongs with them.
+  const summary = [`${name} — PTO (${row.leave_type})`, half ? ' ½ day' : ''].join('');
 
   return [
     'BEGIN:VEVENT',
@@ -59,7 +59,7 @@ export function toVEvent(row: RequestRow, stamp: string): string[] {
     fold(
       `DESCRIPTION:${escapeText(
         `${name}${row.pto_employees?.department ? ` · ${row.pto_employees.department}` : ''}\n` +
-          `${row.leave_type} · ${row.duration_type} · ${row.pay_status}\n` +
+          `${row.leave_type} · ${row.duration_type}\n` +
           `Request ${row.id}\n\nFrom the Valveman-Welsford PTO Tracker. Approved leave only.`,
       )}`,
     ),

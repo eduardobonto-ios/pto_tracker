@@ -18,7 +18,9 @@
 //   - Treat the URL like a password. Share it the way you would share one.
 //   - Rotate by setting a new PTO_FEED_TOKEN. That invalidates every existing
 //     subscription, and everyone must re-subscribe.
-//   - It deliberately carries no leave *reasons* — those stay in the app.
+//   - It deliberately carries no leave *reasons* and no *pay status* — both
+//     stay in the app, where they are shown only to the employee and to
+//     management.
 //   - It returns 404, not 401, on a bad token, so probing reveals nothing.
 //
 // This is the same trust model as Outlook's own "Publish a calendar" feature,
@@ -76,7 +78,7 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase
       .from('pto_requests')
       .select(
-        'id, leave_type, start_date, end_date, duration_type, pay_status, pto_employees(name, department)',
+        'id, leave_type, start_date, end_date, duration_type, pto_employees(name, department)',
       )
       .eq('status', 'Approved')
       .gte('start_date', shiftMonths(-MONTHS_BACK))

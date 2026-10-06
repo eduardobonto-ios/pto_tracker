@@ -23,7 +23,6 @@ const row = (over: Partial<RequestRow> = {}): RequestRow => ({
   start_date: '2026-09-14',
   end_date: '2026-09-14',
   duration_type: 'Full Day',
-  pay_status: 'Paid',
   pto_employees: { name: 'Josh Kirk', department: 'Operations' },
   ...over,
 });
@@ -63,8 +62,13 @@ check(
 
 check('half day marked', line(toVEvent(row({ duration_type: 'Half Day (AM)' }), STAMP), 'SUMMARY'),
   'SUMMARY:Josh Kirk — PTO (Vacation Leave) ½ day');
-check('unpaid marked', line(toVEvent(row({ pay_status: 'Unpaid' }), STAMP), 'SUMMARY'),
-  'SUMMARY:Josh Kirk — PTO (Vacation Leave) [Unpaid]');
+// Pay status must never reach the feed: everyone subscribes to it, so an
+// "[Unpaid]" tag here is a colleague's pay arrangements on every employee's
+// Outlook calendar. Asserted on both fields a reader would actually see.
+check('no pay status in the summary', line(toVEvent(row(), STAMP), 'SUMMARY'),
+  'SUMMARY:Josh Kirk — PTO (Vacation Leave)');
+check('no pay status in the description',
+  /Paid|Unpaid/.test(line(toVEvent(row(), STAMP), 'DESCRIPTION') ?? ''), false);
 check('missing employee degrades', line(toVEvent(row({ pto_employees: null }), STAMP), 'SUMMARY'),
   'SUMMARY:Employee — PTO (Vacation Leave)');
 
