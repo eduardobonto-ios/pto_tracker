@@ -321,6 +321,54 @@ supabase functions deploy read-org-calendar --project-ref wmglpvxdcehbrfcbrxzd
 Deliberately **not** setting `MS_GRAPH_CALENDAR_USER` leaves the dormant PTO
 push (B) switched off.
 
+## Enabling B — the PTO push  (what Will asked for, 2026-10-06)
+
+Steps 1-4 above are shared. Three things differ, and all three are easy to miss
+because the walkthrough above was written for A:
+
+| | A (read the org calendar) | B (push PTO into it) |
+|---|---|---|
+| Graph permission | `Calendars.Read` | **`Calendars.ReadWrite`** |
+| Mailbox secret | `MS_GRAPH_ORG_CALENDAR_USER` | **`MS_GRAPH_CALENDAR_USER`** |
+| Function to deploy | `read-org-calendar` | **`sync-pto-calendar`** |
+
+`Calendars.ReadWrite` includes read, so one app registration with it covers
+both directions. Grant it once rather than adding `Calendars.Read` separately.
+
+```bash
+supabase secrets set \
+  MS_GRAPH_TENANT_ID=<tenant-id> \
+  MS_GRAPH_CLIENT_ID=<client-id> \
+  MS_GRAPH_CLIENT_SECRET=<secret-value> \
+  MS_GRAPH_CALENDAR_USER=events@fswelsford.com \
+  --project-ref wmglpvxdcehbrfcbrxzd
+
+supabase functions deploy sync-pto-calendar --project-ref wmglpvxdcehbrfcbrxzd
+```
+
+Setting `MS_GRAPH_CALENDAR_USER` is what switches B on; it stays dormant while
+that secret is unset, which is why step 5 above deliberately omits it.
+
+**Verify** by approving a leave request and watching the calendar in Outlook.
+The event appears immediately, unlike the subscribed feed. Failures are silent
+by design — `calendarSync.ts` fires and forgets — so read the logs:
+
+```bash
+supabase functions logs sync-pto-calendar --project-ref wmglpvxdcehbrfcbrxzd
+```
+
+**Then retire C.** Once B is confirmed working, the public ICS feed is no
+longer needed and is the weaker of the two: its URL is an unauthenticated
+credential sitting outside the tenant, which is exactly what Will objected to.
+Rotate `PTO_FEED_TOKEN` to a new random value and the old URL dies instantly.
+Tell anyone who subscribed, because their calendar stops updating silently.
+
+**The client secret expires.** Note the expiry date somewhere that will be
+looked at — when it lapses, Graph returns 401 and the push stops without any
+visible error in the app. Approvals keep working; only the calendar goes quiet.
+
+---
+
 ## Step 6 — Verify
 
 Put a test event on the org calendar in Outlook, then open the PTO Calendar page
