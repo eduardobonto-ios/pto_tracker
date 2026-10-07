@@ -1,0 +1,34 @@
+_format_version: "2.1"
+
+# Multiplexes the single origin supabase-js expects onto the services that
+# replace Supabase's platform. The client calls createClient(url, anonKey) and
+# issues /rest/v1/... and /functions/v1/... against one host; without this there
+# is nothing for it to talk to.
+#
+# No /auth/v1 or /storage/v1 service: this app does not use Supabase Auth (it
+# has its own pto_credentials + pto_verify_login) and makes no Storage calls.
+#
+# No key-auth plugin: PostgREST verifies the JWT itself against the shared
+# secret and derives the Postgres role from its `role` claim, and the function
+# host verifies the same JWT. Enforcing it a third time here would only add a
+# second place to rotate keys.
+services:
+  - name: rest-v1
+    url: https://ca-pto-rest.internal.${ENV_DOMAIN}/
+    routes:
+      - name: rest-v1-route
+        paths:
+          - /rest/v1/
+        strip_path: true
+    plugins:
+      - name: cors
+
+  - name: functions-v1
+    url: https://ca-pto-functions.internal.${ENV_DOMAIN}/
+    routes:
+      - name: functions-v1-route
+        paths:
+          - /functions/v1/
+        strip_path: true
+    plugins:
+      - name: cors

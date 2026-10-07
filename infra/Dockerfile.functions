@@ -1,0 +1,25 @@
+# The three Edge Functions, hosted as one Deno service.
+# Build context is the REPO ROOT: main.ts imports supabase/functions/* unchanged.
+FROM denoland/deno:alpine-2.1.4
+ENV DENO_DIR=/deno-dir
+WORKDIR /app
+COPY supabase/functions ./supabase/functions
+COPY infra/functions ./infra/functions
+
+# Cache each function entrypoint EXPLICITLY, not just main.ts. main.ts reaches
+# them through a dynamic import() built from a template literal, which `deno
+# cache` cannot follow — without these three paths the remote supabase-js
+# import inside sync-pto-calendar and pto-calendar-feed would be fetched from
+# esm.sh on the first request instead of at build time, turning a network blip
+# into a runtime 500.
+RUN deno cache --no-check \
+      supabase/functions/read-org-calendar/index.ts \
+      supabase/functions/sync-pto-calendar/index.ts \
+      supabase/functions/pto-calendar-feed/index.ts \
+      infra/functions/main.ts \
+ && chmod -R a+rX /deno-dir
+
+EXPOSE 8080
+USER deno
+# --allow-read is for the dynamic import of the local function modules.
+CMD ["deno", "run", "--allow-net", "--allow-env", "--allow-read", "--no-check", "infra/functions/main.ts"]
