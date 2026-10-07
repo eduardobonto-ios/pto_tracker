@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.vercel
+.claude
+supabase/.temp
+tsconfig.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+docs
