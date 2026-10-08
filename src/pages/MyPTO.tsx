@@ -5,7 +5,7 @@ import { StatCard } from '@/components/StatCard';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Field, Input, Select } from '@/components/ui/Field';
 import { Drawer } from '@/components/ui/Modal';
-import { Table, Td, Th, Tr } from '@/components/ui/Table';
+import { SortableTh, Table, Td, Tr, type SortState } from '@/components/ui/Table';
 import { EmployeeDetails } from '@/components/EmployeeDetails';
 import { useApp } from '@/context/AppContext';
 import { cn, formatDate, formatDays } from '@/lib/utils';
@@ -18,6 +18,19 @@ function usedToneClasses(pct: number) {
   if (pct >= 36) return 'bg-yellow-100 text-yellow-800';
   return 'bg-green-100 text-green-700';
 }
+
+/** Every column on the tracker is sortable — see the note on `sort` below. */
+type TrackerSortKey =
+  | 'name'
+  | 'jobTitle'
+  | 'department'
+  | 'hireDate'
+  | 'eligibilityDate'
+  | 'eligible'
+  | 'totalPto'
+  | 'daysUsed'
+  | 'daysRemaining'
+  | 'percentUsed';
 
 /**
  * A spreadsheet-style mirror of the legacy "PTO Tracker" sheet, styled to
@@ -63,7 +76,60 @@ export function MyPTOPage() {
     });
   }, [employees, balances, query, department, eligibility]);
 
-  const rows = filtered.map((employee) => ({ employee, balance: balances[employee.id] }));
+  // Sorting lives here rather than in a shared table because this page builds
+  // its own markup — the roster on /employees uses EmployeeTable and has its
+  // own copy. Will asked for the PTO Requests arrows on this view
+  // (2026-10-06); the first attempt added them to EmployeeTable, which is a
+  // different page he never looks at.
+  const [sort, setSort] = useState<SortState<TrackerSortKey>>({ key: 'name', direction: 'asc' });
+
+  const toggleSort = (key: TrackerSortKey) =>
+    setSort((prev) =>
+      prev.key === key
+        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' },
+    );
+
+  const rows = useMemo(() => {
+    const value = (employee: Employee): string | number => {
+      const b = balances[employee.id];
+      switch (sort.key) {
+        case 'name':
+          return employee.name;
+        case 'jobTitle':
+          return employee.jobTitle;
+        case 'department':
+          return employee.department;
+        // ISO dates compare correctly as text — no parsing, no timezone.
+        case 'hireDate':
+          return employee.hireDate;
+        case 'eligibilityDate':
+          return b?.eligibilityDate ?? '';
+        // Numeric so ascending groups the not-yet-eligible first, which is the
+        // list an admin is usually after.
+        case 'eligible':
+          return b?.eligible ? 1 : 0;
+        case 'totalPto':
+          return b?.totalPto ?? 0;
+        case 'daysUsed':
+          return b?.daysUsed ?? 0;
+        case 'daysRemaining':
+          return b?.daysRemaining ?? 0;
+        case 'percentUsed':
+          return b?.percentUsed ?? 0;
+      }
+    };
+    const factor = sort.direction === 'asc' ? 1 : -1;
+    // Copy before sorting; `filtered` belongs to the caller.
+    return [...filtered]
+      .sort((a, b) => {
+        const av = value(a);
+        const bv = value(b);
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor;
+        return String(av).localeCompare(String(bv)) * factor;
+      })
+      .map((employee) => ({ employee, balance: balances[employee.id] }));
+  }, [filtered, balances, sort]);
 
   return (
     <AppLayout
@@ -139,16 +205,16 @@ export function MyPTOPage() {
             <Table className="min-w-[1100px]">
               <thead className="sticky top-0 z-10">
                 <tr>
-                  <Th>Name</Th>
-                  <Th>Role</Th>
-                  <Th>Department</Th>
-                  <Th>Hire Date</Th>
-                  <Th>Eligibility Date</Th>
-                  <Th>Eligible</Th>
-                  <Th align="right">Total PTO</Th>
-                  <Th align="right">Days Used</Th>
-                  <Th align="right">Days Remaining</Th>
-                  <Th align="right">% Used</Th>
+                  <SortableTh sortKey="name" sort={sort} onSort={toggleSort}>Name</SortableTh>
+                  <SortableTh sortKey="jobTitle" sort={sort} onSort={toggleSort}>Role</SortableTh>
+                  <SortableTh sortKey="department" sort={sort} onSort={toggleSort}>Department</SortableTh>
+                  <SortableTh sortKey="hireDate" sort={sort} onSort={toggleSort}>Hire Date</SortableTh>
+                  <SortableTh sortKey="eligibilityDate" sort={sort} onSort={toggleSort}>Eligibility Date</SortableTh>
+                  <SortableTh sortKey="eligible" sort={sort} onSort={toggleSort}>Eligible</SortableTh>
+                  <SortableTh sortKey="totalPto" sort={sort} onSort={toggleSort} align="right">Total PTO</SortableTh>
+                  <SortableTh sortKey="daysUsed" sort={sort} onSort={toggleSort} align="right">Days Used</SortableTh>
+                  <SortableTh sortKey="daysRemaining" sort={sort} onSort={toggleSort} align="right">Days Remaining</SortableTh>
+                  <SortableTh sortKey="percentUsed" sort={sort} onSort={toggleSort} align="right">% Used</SortableTh>
                 </tr>
               </thead>
               <tbody>
