@@ -229,21 +229,24 @@ is still the old one.
 
 ## Source control
 
-`origin` is GitHub: `github.com/eduardobonto-ios/pto_tracker`.
+The repository is mirrored to two remotes:
 
-An Azure DevOps project also exists at `dev.azure.com/fswelsford/pto_tracker`.
-To push there as well, add it as a second remote rather than replacing GitHub:
-
-```bash
-git remote add azure https://dev.azure.com/fswelsford/pto_tracker/_git/pto_tracker
-git push azure main
+```
+origin  github.com/eduardobonto-ios/pto_tracker
+azure   dev.azure.com/fswelsford/pto_tracker/_git/pto_tracker
 ```
 
-Azure DevOps wants a Personal Access Token rather than a password; Git
-Credential Manager handles the prompt on macOS.
+Push to both until Vercel is retired — **Vercel builds from `origin`**, so
+skipping it silently stops the rollback from updating.
 
-Mirroring both is the safer order while Vercel is still live, because Vercel
-deploys from the GitHub remote. Once Vercel is retired, Azure Repos can become
-`origin` and GitHub can be archived -- but do that as its own change, not in
-the middle of another one.
+```bash
+git push origin main && git push azure main && ./infra/azure-deploy.sh app
+```
 
+Azure DevOps authenticates with a **Personal Access Token**, not a password:
+avatar → Personal access tokens → New Token → scope *Code (read, write &
+manage)*. Let git prompt for it so `osxkeychain` stores it; passing it inside
+the clone URL works but writes the token into shell history in plaintext.
+
+Once Vercel is gone, `azure` can become `origin` and GitHub can be archived.
+Do that as its own change.
