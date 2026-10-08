@@ -148,3 +148,102 @@ source-vs-destination row count for all eight tables.
    so the two stacks are now diverging and whichever one people use is the
    one collecting real leave requests. Decide the cutover before telling
    anyone the new URL.
+
+## Shipping a change
+
+Two commands. Both matter, and they do different things.
+
+```bash
+cd /Users/mac/Valveman/PTOTracker
+
+git push origin main          # source control (and Vercel rebuilds itself)
+./infra/azure-deploy.sh app   # Azure -- this is what actually updates it
+```
+
+Targets: `app` (frontend), `functions` (Edge Functions), `kong` (gateway), or
+no argument for all three. Only rebuild what changed; `app` is the usual one.
+
+**A push alone never updates Azure.** There is no CI on this repo. Azure only
+moves when `azure-deploy.sh` runs, which is why Vercel carried fixes for days
+that Azure did not have.
+
+### What the script actually runs
+
+```bash
+TAG="v$(date +%Y%m%d%H%M%S)"
+KONG="$(az containerapp show -g rg-pto-tracker -n ca-pto-kong \
+         --query properties.configuration.ingress.fqdn -o tsv)"
+
+az acr build -r acrfswpto2f270c -t "pto-app:$TAG" -f infra/Dockerfile.app . \
+  --build-arg "VITE_SUPABASE_URL=https://$KONG" \
+  --build-arg "VITE_SUPABASE_ANON_KEY=$(az keyvault secret show \
+      --vault-name kv-fsw-pto-2f270c -n anon-key --query value -o tsv)"
+
+az containerapp update -g rg-pto-tracker -n ca-pto-app \
+  --image "acrfswpto2f270c.azurecr.io/pto-app:$TAG" \
+  --revision-suffix "${TAG//v/r}"
+```
+
+`az acr build` builds **in Azure**, not locally, so Docker does not need to be
+running on the machine you deploy from.
+
+### Three things that cost time if you forget them
+
+**`az acr build` uploads the WORKING TREE, not the last commit.** It will
+happily deploy uncommitted changes, and it will equally happily deploy code you
+never pushed. Push first, every time, or Azure and the repo drift apart and
+nobody can tell which is live.
+
+**Changing the gateway URL or the anon key is a rebuild, not a restart.** Vite
+inlines `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` into the bundle at
+build time. Restarting a revision re-runs the same bundle with the same values
+baked in.
+
+**Hard-refresh before believing a deploy failed.** nginx sends
+`no-cache, no-store` for `index.html` and caches `/assets/` for a year, which
+is correct -- but a browser that already has the page will keep showing it.
+`Cmd+Shift+R`, or open a private window, before concluding anything is wrong.
+A deploy has been declared broken on this project when the only problem was a
+cached tab.
+
+### Checking a deploy landed
+
+```bash
+# newest image, and whether the app is running it
+az acr manifest list-metadata --registry acrfswpto2f270c --name pto-app \
+  --orderby time_desc --query '[0].{tag:tags[0], built:createdTime}' -o tsv
+az containerapp revision list -n ca-pto-app -g rg-pto-tracker \
+  --query "[?properties.active].{rev:name, image:properties.template.containers[0].image}" -o tsv
+```
+
+The only check that proves what a browser receives is the bundle itself:
+
+```bash
+APP=https://ca-pto-app.bluedesert-d4253afc.eastus2.azurecontainerapps.io
+ASSET=$(curl -sL "$APP/?cb=$(date +%s)" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+curl -sL "$APP/$ASSET" | grep -c 'some-string-from-your-change'
+```
+
+A new image and an active revision can both look right while the served file
+is still the old one.
+
+## Source control
+
+`origin` is GitHub: `github.com/eduardobonto-ios/pto_tracker`.
+
+An Azure DevOps project also exists at `dev.azure.com/fswelsford/pto_tracker`.
+To push there as well, add it as a second remote rather than replacing GitHub:
+
+```bash
+git remote add azure https://dev.azure.com/fswelsford/pto_tracker/_git/pto_tracker
+git push azure main
+```
+
+Azure DevOps wants a Personal Access Token rather than a password; Git
+Credential Manager handles the prompt on macOS.
+
+Mirroring both is the safer order while Vercel is still live, because Vercel
+deploys from the GitHub remote. Once Vercel is retired, Azure Repos can become
+`origin` and GitHub can be archived -- but do that as its own change, not in
+the middle of another one.
+
