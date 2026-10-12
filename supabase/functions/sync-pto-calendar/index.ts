@@ -70,6 +70,14 @@ async function findEventId(token: string, calendarUser: string, requestId: strin
   return json.value[0]?.id ?? null;
 }
 
+/**
+ * Windows timezone name the all-day events are anchored to. Graph speaks
+ * Windows names, not IANA ones, so this is "Eastern Standard Time" rather
+ * than "America/New_York". F.S. Welsford is in Exton, PA; set
+ * MS_GRAPH_CALENDAR_TIMEZONE to override without a code change.
+ */
+const CALENDAR_TIMEZONE = Deno.env.get('MS_GRAPH_CALENDAR_TIMEZONE') ?? 'Eastern Standard Time';
+
 /** Graph all-day events use an exclusive end date — the day *after* the last day of leave. */
 function exclusiveEndDate(endDateIso: string): string {
   const d = new Date(`${endDateIso}T00:00:00Z`);
@@ -119,8 +127,15 @@ Deno.serve(async (req) => {
     const body = {
       subject: `${employee?.name ?? 'Employee'} — PTO (${request.leave_type})`,
       isAllDay: true,
-      start: { dateTime: `${request.start_date}T00:00:00`, timeZone: 'UTC' },
-      end: { dateTime: `${exclusiveEndDate(request.end_date)}T00:00:00`, timeZone: 'UTC' },
+      // NOT UTC. An all-day event is anchored to a timezone, and Outlook
+      // renders it from that anchor — so UTC midnight showed as "8 AM" to a
+      // viewer in Manila (UTC+8) and 8 PM the previous evening to one in
+      // Pennsylvania. Anchoring to the company's own timezone makes it render
+      // as a proper all-day band everywhere, which is what leave is.
+      start: { dateTime: `${request.start_date}T00:00:00`, timeZone: CALENDAR_TIMEZONE },
+      end: { dateTime: `${exclusiveEndDate(request.end_date)}T00:00:00`, timeZone: CALENDAR_TIMEZONE },
+      // Leave is information, not a reason to block someone's availability.
+      showAs: 'free',
       body: {
         contentType: 'Text',
         // The marker line lets read-org-calendar filter this event back out,
