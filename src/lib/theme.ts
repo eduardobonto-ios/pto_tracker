@@ -142,16 +142,20 @@ export const PTO_MAX_ENTITLEMENT_DAYS = 10;
  * employee and a seven-month one both began on 5. The +1 arrives on the first
  * hire anniversary falling on or after this date.
  *
- * Confirmed by Eduardo 2026-10-13: in 2026 only Princes Gomez (8 Dec) and
- * Kazutomo Nishimura (26 Sep) get a +1; everybody else waits until 2027.
- * That outcome is what fixes this constant. Veam Chavez (23 Jun), Mabel Rojas
- * (30 Jun) and Jlydie Bagasala (10 Jul) have 2026 anniversaries too, and they
- * are explicitly NOT to get an increase this year — so the cut-off has to sit
- * after 10 July and on or before 26 September. Any date in that window gives
- * the same answer for everyone; 1 August is the middle of it.
+ * In 2026 only Princes Gomez (8 Dec) and Kazutomo Nishimura (26 Sep) get a
+ * +1; everybody else waits until 2027. That outcome is what fixes this date.
  *
- * If that list was wrong and those three should have risen to 6 this year,
- * move this to 1 June and nothing else needs to change.
+ * SETTLED — DO NOT "CORRECT" THIS TO 1 JUNE. The PTO itself was handed out in
+ * June 2026, so June looks like the obvious value, and it is wrong. Veam
+ * Chavez (23 Jun), Mabel Rojas (30 Jun) and Jlydie Bagasala (10 Jul) all have
+ * anniversaries falling just after a June grant, so a 1 June cut-off raises
+ * five people in 2026 instead of two. Eduardo was asked three times and gave
+ * the same answer each time, most recently 2026-10-14: "ignore Veam, Mabel and
+ * Jlydie they will add +1 next year, only Princes and Kazutomo this year".
+ *
+ * The cut-off therefore has to sit after 10 July and on or before 26
+ * September. Any date in that window gives the same answer for all eleven;
+ * 1 August is the middle of it.
  */
 export const PTO_PH_RAMP_START = '2026-08-01';
 
