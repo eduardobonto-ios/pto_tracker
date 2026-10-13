@@ -10,10 +10,12 @@ import {
   round,
   computeBalance,
   computeEntitlement,
+  greenPlanMismatches,
+  isGreenPlanEmployee,
   currentPtoYearStart,
   eligibilityDateFor,
 } from './pto';
-import { PTO_ACCRUAL_ENABLED } from './theme';
+import { PTO_ACCRUAL_ENABLED, PTO_GREEN_PLAN_EMAILS } from './theme';
 import type { Employee, PTORequest } from '@/types';
 
 let pass = 0,
@@ -176,6 +178,44 @@ check('exempt stays at the cap thereafter',
 // A plain ramp hire on the same date would climb a day at a time instead.
 check('the ordinary ramp would read 11 on that date',
   computeEntitlement(ramp({ hireDate: '2026-08-19' }), new Date(2027, 7, 19)), 11);
+
+// --- the green list from the directory -------------------------------------
+// The sheet is the source of truth and nothing syncs it, so these cases exist
+// to make a drift between it and pto_plan fail loudly.
+check('the green list holds the six from the directory', PTO_GREEN_PLAN_EMAILS.length, 6);
+check('green is matched case-insensitively',
+  isGreenPlanEmployee({ email: 'DMushrush@fswelsford.com' }), true);
+check('a non-green address is not green',
+  isGreenPlanEmployee({ email: 'nmullen@fswelsford.com' }), false);
+check('a missing address is not green', isGreenPlanEmployee({ email: '' }), false);
+
+// A green row stored as 'fixed' must still take the ramp, so a stale column
+// cannot underpay. This is the failure the four Territory Managers hit.
+check('a green row stored as fixed still takes the ramp',
+  computeEntitlement(
+    us({ email: 'dylan@valveman.com', ptoPlan: 'fixed', fixedPtoDays: 5, hireDate: '2024-01-01' }),
+    AS_OF,
+  ), 12);
+// ...and it is reported rather than silently corrected.
+// Filtered to the row under test: a one-element roster also reports the other
+// five green addresses as absent, which is itself correct behaviour.
+check('that same row is reported as a mismatch',
+  greenPlanMismatches([{ name: 'Dylan Lavern', email: 'dylan@valveman.com', ptoPlan: 'fixed' }])
+    .filter((m) => m.email === 'dylan@valveman.com').length, 1);
+check('a correct green row is not reported',
+  greenPlanMismatches([{ name: 'Dylan Lavern', email: 'dylan@valveman.com', ptoPlan: 'tenure_ramp' }])
+    .filter((m) => m.email === 'dylan@valveman.com').length, 0);
+// Drift the other way: someone on the ramp who is no longer green.
+check('a non-green row on the ramp is reported',
+  greenPlanMismatches([{ name: 'X', email: 'x@valveman.com', ptoPlan: 'tenure_ramp' }])
+    .filter((m) => m.email === 'x@valveman.com').length, 1);
+// Will is exempt by individual arrangement, not by being green — not a drift.
+check('the exempt plan is not treated as drift',
+  greenPlanMismatches([{ name: 'Will Berget', email: 'wberget@fswelsford.com', ptoPlan: 'ramp_exempt' }])
+    .filter((m) => m.email === 'wberget@fswelsford.com').length, 0);
+// A green address that has left the roster entirely is also drift.
+check('a green address missing from the roster is reported',
+  greenPlanMismatches([]).length, 6);
 
 // --- PTO year reset --------------------------------------------------------
 check('PH year starts on the hire anniversary',

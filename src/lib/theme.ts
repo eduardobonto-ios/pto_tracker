@@ -284,6 +284,37 @@ export const PTO_TENURE_RAMP_YEARS_TO_MAX = 5;
 export const PTO_TERRITORY_MANAGER_JOB_TITLES = ['Territory Manager'];
 
 /**
+ * The rows shaded GREEN in the "U.S Side" column of the FSW Group Team
+ * Directory — the Territory Managers and the two outside sales engineers who
+ * take the tenure ramp. Supplied by Eduardo 2026-10-13 and restated
+ * 2026-10-14: "if employee have green, green condition will follow, and
+ * Will's email is applicable if not green".
+ *
+ *   https://docs.google.com/spreadsheets/d/1tKAWrF358quaobKko4b6LU3L1X1mBLjNTW4Ibyje_P8
+ *
+ * KEPT HERE BECAUSE THE SHEET IS THE SOURCE OF TRUTH AND THE DATABASE IS NOT.
+ * "Green" is a fill colour in a spreadsheet; nothing syncs it. It used to live
+ * only in `pto_plan`, which meant a row could drift out of step with the sheet
+ * and quietly pay the wrong number — exactly how four Territory Managers sat
+ * in the wrong region for weeks. `computeEntitlement` now derives the ramp
+ * from this list as well as the column, so a stale column cannot underpay
+ * anyone, and `greenPlanMismatches` reports the disagreement instead of
+ * letting it sit.
+ *
+ * Compared case-insensitively. When someone joins or leaves the green group in
+ * the sheet, change it here AND in `pto_plan`; the mismatch warning will tell
+ * you if you only do one.
+ */
+export const PTO_GREEN_PLAN_EMAILS = [
+  'amr@valveman.com',
+  'cleon@valveman.com',
+  'dyork@fswelsford.com',
+  'dmushrush@fswelsford.com',
+  'dylan@valveman.com',
+  'josh@valveman.com',
+];
+
+/**
  * `ptoPlan === 'ramp_exempt'` — the tenure ramp's two endpoints and nothing
  * between them: `PTO_TENURE_RAMP_BASE_DAYS` until the first hire anniversary,
  * `PTO_TENURE_RAMP_MAX_DAYS` from it onwards. Eligible from day one, so the

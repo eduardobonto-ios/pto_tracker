@@ -16,7 +16,7 @@ import {
   sendNotification,
   type NotificationPayload,
 } from '@/lib/notifications';
-import { computeBalances, computeSummary } from '@/lib/pto';
+import { computeBalances, computeSummary, greenPlanMismatches } from '@/lib/pto';
 import { supabase } from '@/lib/supabaseClient';
 import {
   loadApproverRouting,
@@ -231,7 +231,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (requestsRes.error) throw requestsRes.error;
         if (cancelled) return;
 
-        setEmployees((employeesRes.data ?? []).map(mapEmployeeRow));
+        const loadedEmployees = (employeesRes.data ?? []).map(mapEmployeeRow);
+        // "Green" is a fill colour in a Google Sheet and nothing syncs it, so
+        // the directory and pto_plan can drift apart silently — which is how
+        // four Territory Managers sat in the wrong region for weeks. Say so
+        // loudly at load rather than quietly paying the wrong number.
+        const mismatched = greenPlanMismatches(loadedEmployees);
+        if (mismatched.length) {
+          console.warn(
+            `[PTO] ${mismatched.length} employee(s) disagree with PTO_GREEN_PLAN_EMAILS. ` +
+              'Update the list in lib/theme.ts and pto_plan together:',
+            mismatched,
+          );
+        }
+        setEmployees(loadedEmployees);
         setAccounts((accountsRes.data ?? []).map(mapAccountRow));
         setRequests((requestsRes.data ?? []).map(mapRequestRow));
         setRouting(routingData);

@@ -20,6 +20,7 @@ import {
   PTO_TENURE_RAMP_BASE_DAYS,
   PTO_TENURE_RAMP_INCREMENT_DAYS,
   PTO_TENURE_RAMP_MAX_DAYS,
+  PTO_GREEN_PLAN_EMAILS,
   PTO_TERRITORY_MANAGER_JOB_TITLES,
 } from './theme';
 import type {
@@ -80,6 +81,42 @@ export function eligibilityDate(hireDateIso: string): string {
   // Guard month-overflow (e.g. Aug 31 + 6 months → Feb 31 → Mar 3).
   if (target.getDate() !== d.getDate()) target.setDate(0);
   return toISODate(target);
+}
+
+/**
+ * Whether this person is one of the green rows in the directory — see
+ * `PTO_GREEN_PLAN_EMAILS`. Keyed off the email because that is what the sheet
+ * is keyed off; job title will not do, as three other Outside Sales Engineers
+ * are NOT green and hold negotiated figures instead.
+ */
+export function isGreenPlanEmployee(employee: Pick<Employee, 'email'>): boolean {
+  return PTO_GREEN_PLAN_EMAILS.includes((employee.email ?? '').trim().toLowerCase());
+}
+
+/**
+ * Rows where the directory and the database disagree about the green group.
+ * Returns one entry per disagreement, in both directions, so a sheet change
+ * applied to only one of the two places is visible instead of silent.
+ */
+export function greenPlanMismatches(
+  employees: Pick<Employee, 'name' | 'email' | 'ptoPlan'>[],
+): { name: string; email: string; expected: string; stored: string }[] {
+  const out: { name: string; email: string; expected: string; stored: string }[] = [];
+  for (const e of employees) {
+    const green = isGreenPlanEmployee(e);
+    // ramp_exempt is a deliberate individual arrangement, not a green row.
+    if (green && e.ptoPlan !== 'tenure_ramp') {
+      out.push({ name: e.name, email: e.email, expected: 'tenure_ramp', stored: e.ptoPlan });
+    } else if (!green && e.ptoPlan === 'tenure_ramp') {
+      out.push({ name: e.name, email: e.email, expected: 'not tenure_ramp', stored: e.ptoPlan });
+    }
+  }
+  const listed = new Set(PTO_GREEN_PLAN_EMAILS);
+  for (const e of employees) listed.delete((e.email ?? '').trim().toLowerCase());
+  for (const missing of listed) {
+    out.push({ name: '(not on the roster)', email: missing, expected: 'tenure_ramp', stored: '—' });
+  }
+  return out;
 }
 
 /** The day before `iso`, so a range can be made inclusive of `iso` itself. */
@@ -145,7 +182,13 @@ function tenureRampDays(hireDateIso: string, asOf: Date): number {
 export function computeEntitlement(
   employee: Pick<
     Employee,
-    'hireDate' | 'jobTitle' | 'ptoRegion' | 'fixedPtoDays' | 'ptoPlan' | 'eligibilityDateOverride'
+    | 'hireDate'
+    | 'jobTitle'
+    | 'ptoRegion'
+    | 'fixedPtoDays'
+    | 'ptoPlan'
+    | 'eligibilityDateOverride'
+    | 'email'
   >,
   asOf: Date = new Date(),
 ): number {
@@ -162,7 +205,9 @@ export function computeEntitlement(
   }
 
   if (employee.ptoRegion === 'US') {
-    if (employee.ptoPlan === 'tenure_ramp') return tenureRampDays(employee.hireDate, asOf);
+    if (employee.ptoPlan === 'tenure_ramp' || isGreenPlanEmployee(employee)) {
+      return tenureRampDays(employee.hireDate, asOf);
+    }
     // Otherwise a negotiated figure that never moves with tenure. It is the
     // sum of their vacation, sick and personal allowances from the US sheet.
     //
@@ -278,7 +323,13 @@ export function currentPtoYearStart(
 export function accruedDays(
   employee: Pick<
     Employee,
-    'hireDate' | 'jobTitle' | 'ptoRegion' | 'fixedPtoDays' | 'ptoPlan' | 'eligibilityDateOverride'
+    | 'hireDate'
+    | 'jobTitle'
+    | 'ptoRegion'
+    | 'fixedPtoDays'
+    | 'ptoPlan'
+    | 'eligibilityDateOverride'
+    | 'email'
   >,
   asOf: Date = new Date(),
 ): number {
