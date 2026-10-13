@@ -21,6 +21,19 @@ TAG="v$(date +%Y%m%d%H%M%S)"
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# Load .env so the EmailJS ids reach the build. They are read from the
+# environment below, and a shell that has not sourced .env resolves every one
+# of them to the empty string — which does NOT fail the build. It produces an
+# app whose notifications silently fall back to console-only preview, with no
+# error anywhere. That is exactly what shipped in pto-app:v20261008205916.
+# Values already exported win, so CI can still override without a .env file.
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 secret() { az keyvault secret show --vault-name "$KV" -n "$1" --query value -o tsv; }
 ENV_DOMAIN="$(az containerapp env show -g "$RG" -n "$ENVIRONMENT" --query properties.defaultDomain -o tsv)"
 KONG_FQDN="$(az containerapp show -g "$RG" -n ca-pto-kong --query properties.configuration.ingress.fqdn -o tsv 2>/dev/null || true)"
