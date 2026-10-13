@@ -96,8 +96,9 @@ export const PTO_HOURS_PER_DAY = 8;
  *
  *  PH: eligible six months after hire. Entitlement starts at
  *      `PTO_BASE_ENTITLEMENT_DAYS` and gains `PTO_ANNUAL_INCREMENT_DAYS` on
- *      every anniversary of the HIRE date, capped at
- *      `PTO_MAX_ENTITLEMENT_DAYS` — 5, +1 a year, up to 10.
+ *      every anniversary of the HIRE date FROM `PTO_PH_RAMP_START` onwards,
+ *      capped at `PTO_MAX_ENTITLEMENT_DAYS` — 5, +1 a year, up to 10.
+ *      Service before the plan started does not carry.
  *      Territory Managers are the exception: eligible day one, and on the
  *      tenure ramp below rather than this one.
  *  US: eligible from day one. Two plans, selected by `Employee.ptoPlan`:
@@ -132,6 +133,27 @@ export const PTO_HOURS_PER_DAY = 8;
 export const PTO_BASE_ENTITLEMENT_DAYS = 5;
 export const PTO_ANNUAL_INCREMENT_DAYS = 1;
 export const PTO_MAX_ENTITLEMENT_DAYS = 10;
+
+/**
+ * The date the PH plan started counting annual increases.
+ *
+ * PH staff were all granted their INITIAL five days when the tracker went live
+ * in 2026 — years already worked did not carry forward, so a four-year
+ * employee and a seven-month one both began on 5. The +1 arrives on the first
+ * hire anniversary falling on or after this date.
+ *
+ * Confirmed by Eduardo 2026-10-13: in 2026 only Princes Gomez (8 Dec) and
+ * Kazutomo Nishimura (26 Sep) get a +1; everybody else waits until 2027.
+ * That outcome is what fixes this constant. Veam Chavez (23 Jun), Mabel Rojas
+ * (30 Jun) and Jlydie Bagasala (10 Jul) have 2026 anniversaries too, and they
+ * are explicitly NOT to get an increase this year — so the cut-off has to sit
+ * after 10 July and on or before 26 September. Any date in that window gives
+ * the same answer for everyone; 1 August is the middle of it.
+ *
+ * If that list was wrong and those three should have risen to 6 this year,
+ * move this to 1 June and nothing else needs to change.
+ */
+export const PTO_PH_RAMP_START = '2026-08-01';
 
 /**
  * The tenure ramp — `Employee.ptoPlan === 'tenure_ramp'`, plus every PH

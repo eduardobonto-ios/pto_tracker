@@ -104,49 +104,56 @@ check('ramp still waits for a future eligibility override',
 check('ramp clamps a Feb 29 hire date',
   computeEntitlement(ramp({ hireDate: '2024-02-29' }), AS_OF), 12);
 // ptoPlan is no longer a US-only concept (patch_018). A PH employee put on
-// the ramp takes 10 + 1/yr, not the PH 5 + 1/yr — the same hire date reads 6
-// on the PH ramp and 11 on this one.
+// the ramp takes 10 + 1/yr from the HIRE date, not the PH base of 5 counted
+// from the plan start — the same hire date reads 5 on the PH plan and 11 here.
 check('ptoPlan now applies to PH staff too',
   computeEntitlement(ph({ ptoPlan: 'tenure_ramp', hireDate: '2025-01-08' }), AS_OF), 11);
-check('the same PH hire date on the default plan still reads 6',
-  computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 6);
+check('the same PH hire date on the default plan still reads 5',
+  computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 5);
 // The ramp moves entitlement; it must NOT move the annual reset, which still
 // follows the eligibility override.
 check('ramp leaves the reset on the eligibility override',
   currentPtoYearStart(ramp({ hireDate: '2025-01-06', eligibilityDateOverride: '2026-01-06' }), AS_OF),
   '2026-01-06');
 
-// --- PH: base 5, +1 per HIRE anniversary, cap 10 ---------------------------
-// The increment was cut from 2 to 1 on 2026-10-13 (Will Berget's policy email,
-// confirmed by Eduardo). The cap is unchanged at 10 — but at +1 a year it now
-// takes FIVE anniversaries to reach it instead of three, so the cases below
-// exercise the cap deliberately rather than hitting it by accident.
-// Hired 2025-01-08 → eligible 2025-07-08 → one anniversary passed (2026-01-08).
-check('PH one anniversary → 6', computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 6);
-// Hired 2025-06-30 → one HIRE anniversary passed (2026-06-30) → 6. Under the
-// old eligibility rule this read 5, because 2025-12-30 + 1yr had not arrived.
-check('PH one hire anniversary → 6', computeEntitlement(ph({ hireDate: '2025-06-30' }), AS_OF), 6);
-// Hired 2023-07-10 → three hire anniversaries → 5 + 3 = 8. This read 10 under
-// the old +2 rule, so it is the case that catches a silent revert.
-check('PH three hire anniversaries → 8',
-  computeEntitlement(ph({ hireDate: '2023-07-10' }), AS_OF), 8);
-// Hired 2022-09-26 → three passed; the fourth falls the day AFTER AS_OF.
-check('PH anniversary one day away does not count',
-  computeEntitlement(ph({ hireDate: '2022-09-26' }), AS_OF), 8);
-// Exactly five anniversaries → 5 + 5 = 10: the first year the cap binds.
-check('PH reaches the cap at five anniversaries',
-  computeEntitlement(ph({ hireDate: '2021-01-01' }), AS_OF), 10);
-// Far past it — the cap still holds rather than running away.
-check('PH caps at 10', computeEntitlement(ph({ hireDate: '2015-01-01' }), AS_OF), 10);
+// --- PH: everyone starts on the base; +1 from the plan start onwards -------
+// Confirmed by Eduardo 2026-10-13. PH staff were granted their INITIAL five
+// days when the plan began (PTO_PH_RAMP_START); service before that does not
+// carry. So at AS_OF every PH employee reads 5 however long they have been
+// here — a four-year employee and a seven-month one are level.
+check('PH long service still starts on the base',
+  computeEntitlement(ph({ hireDate: '2022-09-26' }), AS_OF), 5);
+check('PH three years still starts on the base',
+  computeEntitlement(ph({ hireDate: '2023-07-10' }), AS_OF), 5);
+check('PH one year still starts on the base',
+  computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 5);
+// A June anniversary falls BEFORE the plan start, so it earns nothing. This is
+// the case that pins the cut-off: Veam and Mabel must not rise this year.
+check('an anniversary before the plan start earns nothing',
+  computeEntitlement(ph({ hireDate: '2025-06-23' }), AS_OF), 5);
+check('nor does a July one', computeEntitlement(ph({ hireDate: '2023-07-10' }), AS_OF), 5);
 check('PH not yet eligible → 0', computeEntitlement(ph({ hireDate: '2026-05-26' }), AS_OF), 0);
-// The ramp keys off the HIRE date. These two differ by six months, so this is
-// the case that catches a regression to the old eligibility-based rule.
-check('PH ramp keys off hire, not eligibility',
-  computeEntitlement(ph({ hireDate: '2025-06-23' }), AS_OF), 6);
-// An override moves eligibility and the reset, but NOT the ramp — years of
-// service are years of service. Same hire date, same answer.
+// An override moves eligibility and the reset, but NOT the ramp.
 check('an override does not shift the ramp',
-  computeEntitlement(ph({ hireDate: '2025-06-23', eligibilityDateOverride: '2025-01-01' }), AS_OF), 6);
+  computeEntitlement(ph({ hireDate: '2025-06-23', eligibilityDateOverride: '2025-01-01' }), AS_OF), 5);
+
+// A year on, the increases that have actually been earned under the plan show
+// up. 1 Jul 2027 is past Kazutomo's Sep 2026 and Princes's Dec 2026
+// anniversaries, and past April's Jan 2027 one.
+const AS_OF_2027 = new Date(2027, 6, 1); // 1 Jul 2027
+check('Kazutomo: one increase earned since the plan start',
+  computeEntitlement(ph({ hireDate: '2022-09-26' }), AS_OF_2027), 6);
+check('Princes: her December anniversary counts',
+  computeEntitlement(ph({ hireDate: '2025-12-08' }), AS_OF_2027), 6);
+check('April: her January 2027 anniversary counts',
+  computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF_2027), 6);
+// Jlydie's anniversary is 10 July — still one week away at this AS_OF, and her
+// 2026 one fell before the plan start, so she is on the base a year in.
+check('a July anniversary has still not come round',
+  computeEntitlement(ph({ hireDate: '2023-07-10' }), AS_OF_2027), 5);
+// The cap still binds, five earned increases after the plan start.
+check('PH caps at 10',
+  computeEntitlement(ph({ hireDate: '2020-01-01' }), new Date(2032, 0, 2)), 10);
 
 // --- PTO year reset --------------------------------------------------------
 check('PH year starts on the hire anniversary',
@@ -189,8 +196,8 @@ check('TM with one anniversary climbs to 11',
   computeEntitlement(tm({ hireDate: '2025-06-15' }), AS_OF), 11);
 check('TM ramp caps at 15, above the PH cap of 10',
   computeEntitlement(tm({ hireDate: '2015-06-15' }), AS_OF), 15);
-check('same dates, non-TM, climbs the PH ramp instead',
-  computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 6);
+check('same dates, non-TM, stays on the PH base',
+  computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 5);
 // The ramp must not reach back past eligibility. A TM hired in the future is
 // still not eligible, so it stays 0 rather than paying out the base.
 check('TM day-one eligibility survived the move to the ramp',
@@ -220,11 +227,14 @@ check('US Territory Manager takes fixed days, not 10',
 // anniversary on ten credits reading 1, 2, 3, 4 on Jan 1 / 15 / 30 / Feb 15.
 // An earlier attempt divided the entitlement by 26 and produced 0, 0.4, 0.8,
 // 1.2 on the same dates, so these are the cases that pin the rate.
-// A 1 January hire with seven anniversaries behind them: the PH ramp is long
-// since capped, so this is exactly ten days on a 1 January cycle. It used to
-// be a Territory Manager, which read a flat ten — patch_018 put them on the
-// tenure ramp, where the same hire date would read fifteen.
-const janFirst = (asOf: Date) => accruedDays(ph({ hireDate: '2020-01-01' }), asOf);
+// Ten days on a 1 January cycle. This deliberately uses a FIXED ten-day
+// employee rather than a PH one: these cases pin the accrual rate, and tying
+// them to whatever the PH plan happens to pay would break them every time that
+// rule moves — which it has, twice. It read a PH hire until 2026-10-13, when
+// PH increases started counting from the plan start and the same hire date
+// dropped from ten days to six.
+const janFirst = (asOf: Date) =>
+  accruedDays(us({ fixedPtoDays: 10, hireDate: '2020-01-01', eligibilityDateOverride: '2020-01-01' }), asOf);
 check('Princes: Jan 1 -> 1 credit', janFirst(new Date(2027, 0, 1)), 1);
 check('Princes: Jan 15 -> 2', janFirst(new Date(2027, 0, 15)), 2);
 check('Princes: Jan 30 -> 3', janFirst(new Date(2027, 0, 30)), 3);

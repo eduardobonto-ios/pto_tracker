@@ -12,6 +12,7 @@ import {
   PTO_ACCRUAL_ENABLED,
   PTO_ACCRUAL_PERIOD_DAYS,
   PTO_ANNUAL_INCREMENT_DAYS,
+  PTO_PH_RAMP_START,
   PTO_BASE_ENTITLEMENT_DAYS,
   PTO_ELIGIBILITY_MONTHS,
   PTO_HOURS_PER_DAY,
@@ -75,6 +76,13 @@ export function eligibilityDate(hireDateIso: string): string {
   return toISODate(target);
 }
 
+/** The day before `iso`, so a range can be made inclusive of `iso` itself. */
+function dayBefore(iso: string): Date {
+  const d = parseISODate(iso);
+  d.setDate(d.getDate() - 1);
+  return d;
+}
+
 /** Anniversaries of `startIso` that have passed on or before `asOf`. */
 function anniversariesSince(startIso: string, asOf: Date): number {
   const start = parseISODate(startIso);
@@ -124,8 +132,9 @@ function tenureRampDays(hireDateIso: string, asOf: Date): number {
  *   tenure ramp   `ptoPlan === 'tenure_ramp'` in either region, and every PH
  *                 Territory Manager by job title. 10, +1 a year, cap 15.
  *   US otherwise  `fixedPtoDays`, a negotiated figure that never moves.
- *   PH otherwise  `PTO_BASE_ENTITLEMENT_DAYS`, +`PTO_ANNUAL_INCREMENT_DAYS` a
- *                 year, capped at `PTO_MAX_ENTITLEMENT_DAYS`.
+ *   PH otherwise  `PTO_BASE_ENTITLEMENT_DAYS`, +`PTO_ANNUAL_INCREMENT_DAYS`
+ *                 per hire anniversary falling on or after
+ *                 `PTO_PH_RAMP_START`, capped at `PTO_MAX_ENTITLEMENT_DAYS`.
  */
 export function computeEntitlement(
   employee: Pick<
@@ -169,18 +178,24 @@ export function computeEntitlement(
     return tenureRampDays(employee.hireDate, asOf);
   }
   // PH staff start at the base and gain PTO_ANNUAL_INCREMENT_DAYS on each
-  // anniversary of their HIRE date. Confirmed by Eduardo 2026-10-02 — this
-  // replaces the eligibility-anniversary rule confirmed with Princes
-  // 2026-09-24, and brings PH into line with the US ramp, which has always
-  // counted service from the hire date.
+  // anniversary of their HIRE date — but only from PTO_PH_RAMP_START onwards.
+  //
+  // Everyone was granted the base when the plan began, whatever they had
+  // already worked, so the anniversaries that fell before that date earned
+  // nothing. Confirmed by Eduardo 2026-10-13; it replaces the rule from
+  // 2026-10-02 under which all service counted, and it is why a four-year
+  // employee and a seven-month one both read 5 today.
   //
   // Eligibility still gates whether anything is drawable at all (the early
-  // return above), so a PH employee seven months in is eligible on 5 days and
-  // reaches 7 at their first hire anniversary rather than their eighteenth
-  // month.
-  const days =
-    PTO_BASE_ENTITLEMENT_DAYS +
-    PTO_ANNUAL_INCREMENT_DAYS * anniversariesSince(employee.hireDate, asOf);
+  // return above).
+  // Only anniversaries from PTO_PH_RAMP_START onwards count. Everyone began on
+  // the base when the plan started, however long they had already worked, so
+  // subtracting the anniversaries that fell before that date leaves just the
+  // increases actually earned under the plan.
+  const earned =
+    anniversariesSince(employee.hireDate, asOf) -
+    anniversariesSince(employee.hireDate, dayBefore(PTO_PH_RAMP_START));
+  const days = PTO_BASE_ENTITLEMENT_DAYS + PTO_ANNUAL_INCREMENT_DAYS * Math.max(earned, 0);
   return Math.min(days, PTO_MAX_ENTITLEMENT_DAYS);
 }
 
