@@ -10,6 +10,7 @@ import type { EmployeeEditInput } from '@/context/AppContext';
 import type { computeBalances } from '@/lib/pto';
 import { formatDateLong, formatDateRange, formatDays } from '@/lib/utils';
 import { DEPARTMENTS, type Department, type Employee, type PTORequest } from '@/types';
+import { PTO_ACCRUAL_ENABLED } from '@/lib/theme';
 
 type Balance = ReturnType<typeof computeBalances>[string];
 
@@ -104,8 +105,12 @@ export function EmployeeDetails({
           {/* Accrued is the one that matters day to day — it is what Days
               remaining is measured against. The annual allowance above is what
               they will have earned by the end of their PTO year. */}
-          <DetailRow label="Accrued so far">{formatDays(balance.accruedDays)} days</DetailRow>
-          <DetailRow label="Still to accrue">{formatDays(balance.unaccruedDays)} days</DetailRow>
+          {PTO_ACCRUAL_ENABLED && (
+            <>
+              <DetailRow label="Accrued so far">{formatDays(balance.accruedDays)} days</DetailRow>
+              <DetailRow label="Still to accrue">{formatDays(balance.unaccruedDays)} days</DetailRow>
+            </>
+          )}
           <DetailRow label="Days used">{formatDays(balance.daysUsed)}</DetailRow>
           {/* The split that makes Days remaining add up: only leave already
               taken is charged against what has accrued so far. */}

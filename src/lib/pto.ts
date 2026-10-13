@@ -376,14 +376,24 @@ export function computeBalance(employee: Employee, requests: PTORequest[]): PTOB
   // An employee who has not cleared their eligibility date cannot draw down
   // yet, so their remaining balance reads 0 until it passes.
   //
-  // DELIBERATELY ALLOWED TO GO NEGATIVE. Taking more than you have accrued is
-  // permitted — the email asked for it explicitly — so this is not clamped at
-  // zero. Every screen that shows it renders a negative in red.
+  // DELIBERATELY ALLOWED TO GO NEGATIVE, so someone who has overdrawn reads
+  // the overdraft rather than a floor of zero. Every screen renders it red.
   //
-  // Measured against `daysTaken`, not `daysUsed`: future-dated approved leave
-  // is committed but not yet drawn, and will have been earned by the time it
-  // is taken.
-  const daysRemaining = eligible ? round(accrued - daysTaken) : 0;
+  // Which figure it is measured against depends on PTO_ACCRUAL_ENABLED:
+  //
+  //   accrual OFF (today)  entitlement minus daysUsed. The whole year is
+  //                        granted at the start of the cycle, and approved
+  //                        leave is committed the moment it is approved —
+  //                        future-dated or not. Eduardo 2026-10-13:
+  //                        "remaining should be total minus used".
+  //   accrual ON           what has been earned so far, minus what has
+  //                        actually been taken. Future-dated leave is excluded
+  //                        there because it will have been earned by the time
+  //                        it is drawn; charging it immediately made people
+  //                        who booked ahead read as overdrawn.
+  const daysRemaining = eligible
+    ? round(PTO_ACCRUAL_ENABLED ? accrued - daysTaken : totalPto - daysUsed)
+    : 0;
   // % of the whole year consumed, not % of what's accrued — otherwise someone
   // one pay period into a new year reads 100% after a single day off.
   const percentUsed = eligible && totalPto > 0 ? Math.round((daysUsed / totalPto) * 100) : 0;

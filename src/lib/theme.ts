@@ -239,15 +239,19 @@ export const PTO_ACCRUAL_DAYS_PER_PERIOD = 1;
 export const PTO_ACCRUAL_CREDIT_ON_ANNIVERSARY = true;
 
 /**
- * Whether accrual applies at all. Setting this to false restores the old
- * grant-it-all-up-front behaviour — `accruedDays` becomes the full entitlement
- * and `daysRemaining` goes back to entitlement minus used.
+ * Whether accrual applies at all. With it off, `accruedDays` is the full
+ * entitlement and `daysRemaining` is entitlement minus days used.
  *
- * It exists because accrual visibly reduces everyone's available balance on
- * the day it ships, and a single switch is a better rollback than reverting a
- * release.
+ * OFF since 2026-10-13. Will Berget's email asked for biweekly accrual with
+ * negatives allowed, and it was built; Eduardo then ruled it out — "no need to
+ * earn every biweekly for all" — so the whole year is granted at the start of
+ * the cycle again. The machinery below is kept rather than deleted because the
+ * decision has now changed twice.
+ *
+ * Turning it back on visibly reduces everyone's available balance on the day
+ * it ships, which is why it is a switch and not a release to revert.
  */
-export const PTO_ACCRUAL_ENABLED = true;
+export const PTO_ACCRUAL_ENABLED = false;
 
 export const PTO_TENURE_RAMP_BASE_DAYS = 10;
 export const PTO_TENURE_RAMP_INCREMENT_DAYS = 1;

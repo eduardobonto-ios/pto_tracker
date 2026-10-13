@@ -15,6 +15,7 @@ import { EligibilityBadge } from '@/components/StatusBadge';
 import { UsageMeter } from '@/components/PTOBalanceCard';
 import { formatDate, formatDays } from '@/lib/utils';
 import type { Employee, PTOBalance } from '@/types';
+import { PTO_ACCRUAL_ENABLED } from '@/lib/theme';
 
 type SortKey =
   | 'name'
@@ -145,9 +146,11 @@ export function EmployeeTable({
             <SortableTh sortKey="totalPto" sort={sort} onSort={toggleSort} align="right">
               Total PTO
             </SortableTh>
-            <SortableTh sortKey="accruedDays" sort={sort} onSort={toggleSort} align="right">
-              Accrued
-            </SortableTh>
+            {PTO_ACCRUAL_ENABLED && (
+              <SortableTh sortKey="accruedDays" sort={sort} onSort={toggleSort} align="right">
+                Accrued
+              </SortableTh>
+            )}
             {/* Taken and Scheduled rather than one "Days Used", so the row
                 adds up on its face: Accrued - Taken = Days Remaining. The
                 combined figure the legacy sheet calls Days Used is
@@ -200,11 +203,13 @@ export function EmployeeTable({
                 <Td align="right" className="font-semibold tabular-nums text-navy-900">
                   {formatDays(b?.totalPto ?? 0)}
                 </Td>
-                {/* What they have actually earned so far this cycle, and the
-                    figure Days Remaining draws against — not the annual total. */}
-                <Td align="right" className="tabular-nums text-navy-900">
-                  {formatDays(b?.accruedDays ?? 0)}
-                </Td>
+                {/* What they have earned so far this cycle. Only meaningful
+                    while accrual is on; with it off this equals Total PTO. */}
+                {PTO_ACCRUAL_ENABLED && (
+                  <Td align="right" className="tabular-nums text-navy-900">
+                    {formatDays(b?.accruedDays ?? 0)}
+                  </Td>
+                )}
                 <Td align="right" className="tabular-nums">
                   {formatDays(b?.daysTaken ?? 0)}
                 </Td>

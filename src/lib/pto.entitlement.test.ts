@@ -13,6 +13,7 @@ import {
   currentPtoYearStart,
   eligibilityDateFor,
 } from './pto';
+import { PTO_ACCRUAL_ENABLED } from './theme';
 import type { Employee, PTORequest } from '@/types';
 
 let pass = 0,
@@ -264,27 +265,42 @@ check('US Territory Manager takes fixed days, not 10',
 // dropped from ten days to six.
 const janFirst = (asOf: Date) =>
   accruedDays(us({ fixedPtoDays: 10, hireDate: '2020-01-01', eligibilityDateOverride: '2020-01-01' }), asOf);
-check('Princes: Jan 1 -> 1 credit', janFirst(new Date(2027, 0, 1)), 1);
-check('Princes: Jan 15 -> 2', janFirst(new Date(2027, 0, 15)), 2);
-check('Princes: Jan 30 -> 3', janFirst(new Date(2027, 0, 30)), 3);
-check('Princes: Feb 15 -> 4', janFirst(new Date(2027, 1, 15)), 4);
-// Accrual stops at the entitlement instead of running to the year end: ten
-// credits are fully banked ten periods in, around mid-May.
-check('ten days are fully accrued after ten periods',
-  janFirst(new Date(2027, 4, 20)), 10);
-check('and does not keep climbing past the entitlement',
-  janFirst(new Date(2027, 10, 1)), 10);
-// A bigger entitlement simply takes longer to fill.
-check('20 days is not yet full at ten periods',
-  accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-01-01', eligibilityDateOverride: '2020-01-01' }),
-    new Date(2027, 4, 20)), 10);
-// Day one of a cycle is never empty — that was the part Princes was clearest
-// about, and the part the first attempt got wrong.
-check('a fresh cycle opens with a credit, not zero',
-  accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-09-25', eligibilityDateOverride: '2026-09-25' }), AS_OF), 1);
-// Periods are whole: 13 days in is still the day-one credit alone.
-check('a part period accrues nothing further',
-  accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-09-12', eligibilityDateOverride: '2026-09-12' }), AS_OF), 1);
+
+if (!PTO_ACCRUAL_ENABLED) {
+  // Accrual is off: the whole entitlement is available from the first day of
+  // the cycle. The cadence cases below are kept and run only when it is on,
+  // because this decision has already reversed twice.
+  check('with accrual off, day one already has the whole year',
+    janFirst(new Date(2027, 0, 1)), 10);
+  check('and it does not change later in the cycle',
+    janFirst(new Date(2027, 4, 20)), 10);
+  check('a 20-day entitlement is likewise whole from day one',
+    accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-01-01', eligibilityDateOverride: '2020-01-01' }),
+      new Date(2027, 0, 1)), 20);
+} else {
+  check('Princes: Jan 1 -> 1 credit', janFirst(new Date(2027, 0, 1)), 1);
+  check('Princes: Jan 15 -> 2', janFirst(new Date(2027, 0, 15)), 2);
+  check('Princes: Jan 30 -> 3', janFirst(new Date(2027, 0, 30)), 3);
+  check('Princes: Feb 15 -> 4', janFirst(new Date(2027, 1, 15)), 4);
+  // Accrual stops at the entitlement instead of running to the year end: ten
+  // credits are fully banked ten periods in, around mid-May.
+  check('ten days are fully accrued after ten periods',
+    janFirst(new Date(2027, 4, 20)), 10);
+  check('and does not keep climbing past the entitlement',
+    janFirst(new Date(2027, 10, 1)), 10);
+  // A bigger entitlement simply takes longer to fill.
+  check('20 days is not yet full at ten periods',
+    accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-01-01', eligibilityDateOverride: '2020-01-01' }),
+      new Date(2027, 4, 20)), 10);
+  // Day one of a cycle is never empty — that was the part Princes was clearest
+  // about, and the part the first attempt got wrong.
+  check('a fresh cycle opens with a credit, not zero',
+    accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-09-25', eligibilityDateOverride: '2026-09-25' }), AS_OF), 1);
+  // Periods are whole: 13 days in is still the day-one credit alone.
+  check('a part period accrues nothing further',
+    accruedDays(us({ fixedPtoDays: 20, hireDate: '2020-09-12', eligibilityDateOverride: '2026-09-12' }), AS_OF), 1);
+}
+
 // Nothing accrues before eligibility, because there is no entitlement yet.
 check('not yet eligible accrues nothing',
   accruedDays(ph({ hireDate: '2026-05-26' }), AS_OF), 0);
@@ -325,9 +341,18 @@ check('daysTaken counts only leave that has started', splitBalance.daysTaken, 3)
 check('daysScheduled counts only leave still to come', splitBalance.daysScheduled, 3);
 check('taken + scheduled reconciles back to daysUsed',
   splitBalance.daysTaken + splitBalance.daysScheduled, splitBalance.daysUsed);
-// The bug this fixes: booking ahead must not read as an overdraft today.
-check('remaining is measured against taken, not used',
-  splitBalance.daysRemaining, round(splitBalance.accruedDays - splitBalance.daysTaken));
+// Which figure remaining is measured against depends on the accrual mode.
+// With accrual ON the point was that booking ahead must not read as an
+// overdraft today; with it OFF, approved leave is committed when approved.
+check('remaining follows the accrual mode',
+  splitBalance.daysRemaining,
+  PTO_ACCRUAL_ENABLED
+    ? round(splitBalance.accruedDays - splitBalance.daysTaken)
+    : round(splitBalance.totalPto - splitBalance.daysUsed));
+if (!PTO_ACCRUAL_ENABLED) {
+  check('with accrual off, remaining is simply total minus used',
+    splitBalance.daysRemaining, round(splitBalance.totalPto - 6));
+}
 // Leave starting today counts as taken the moment it begins, not partway in.
 check('leave starting today counts as taken',
   computeBalance(splitter, [leave('today', shift(0), 1)]).daysTaken, 1);

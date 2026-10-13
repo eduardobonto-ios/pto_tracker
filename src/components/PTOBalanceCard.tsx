@@ -4,6 +4,7 @@ import { ProgressBar } from '@/components/ui/Misc';
 import { EligibilityBadge } from '@/components/StatusBadge';
 import { formatDateLong, formatDays } from '@/lib/utils';
 import type { Employee, PTOBalance } from '@/types';
+import { PTO_ACCRUAL_ENABLED } from '@/lib/theme';
 
 /** Personal PTO summary — the hero card on the dashboard and My PTO. */
 export function PTOBalanceCard({
@@ -35,20 +36,22 @@ export function PTOBalanceCard({
         <div className="mt-5 flex flex-wrap items-end gap-x-8 gap-y-3">
           <div>
             <p className="text-[11px] uppercase tracking-wide text-navy-300">Available now</p>
-            {/* "of accrued", not "of totalPto". PTO is earned every two weeks,
-                so the number you can actually book against is what has accrued
-                so far — showing the year's full entitlement here would promise
-                days that have not been earned yet. The year's total is in the
-                breakdown below. */}
+            {/* With accrual ON this reads "of <accrued>", because the number
+                you can book against is what has been earned so far rather than
+                the year's full entitlement. With it OFF the whole year is
+                granted at the start of the cycle, so the qualifier would be
+                noise — accrued and total are the same figure. */}
             <p
               className={`mt-1 text-[38px] font-bold leading-none tracking-tight ${
                 overdrawn ? 'text-danger-500' : 'text-white'
               }`}
             >
               {formatDays(balance.daysRemaining)}
-              <span className="ml-1.5 text-[14px] font-semibold text-navy-300">
-                of {formatDays(balance.accruedDays)} accrued
-              </span>
+              {PTO_ACCRUAL_ENABLED && (
+                <span className="ml-1.5 text-[14px] font-semibold text-navy-300">
+                  of {formatDays(balance.accruedDays)} accrued
+                </span>
+              )}
             </p>
           </div>
           <div className="flex gap-6">
@@ -104,11 +107,13 @@ export function PTOBalanceCard({
             icon={<CalendarClock size={13} className="text-accent-500" />}
           />
           <Stat label="Annual allowance" value={`${formatDays(balance.totalPto)} days`} />
-          <Stat
-            label="Still to accrue"
-            value={`${formatDays(balance.unaccruedDays)} days`}
-            icon={<Hourglass size={13} className="text-accent-500" />}
-          />
+          {PTO_ACCRUAL_ENABLED && (
+            <Stat
+              label="Still to accrue"
+              value={`${formatDays(balance.unaccruedDays)} days`}
+              icon={<Hourglass size={13} className="text-accent-500" />}
+            />
+          )}
         </div>
       )}
     </Card>

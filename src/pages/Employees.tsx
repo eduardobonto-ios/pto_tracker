@@ -13,6 +13,7 @@ import { EligibilityBadge, PayBadge, StatusBadge } from '@/components/StatusBadg
 import { useApp } from '@/context/AppContext';
 import { byFirstName, formatDateLong, formatDateRange, formatDays } from '@/lib/utils';
 import { DEPARTMENTS, type Employee } from '@/types';
+import { PTO_ACCRUAL_ENABLED } from '@/lib/theme';
 
 export function EmployeesPage() {
   const { employees, balances, requests, summary } = useApp();
@@ -58,7 +59,8 @@ export function EmployeesPage() {
       'Eligibility Date',
       'Eligible',
       'Total PTO',
-      'Accrued',
+      // Kept in step with the row below, or every column after it shifts.
+      ...(PTO_ACCRUAL_ENABLED ? ['Accrued'] : []),
       'Days Used',
       'Taken',
       'Scheduled',
@@ -77,7 +79,7 @@ export function EmployeesPage() {
         b?.eligibilityDate ?? '',
         b?.eligible ? 'Yes' : 'No',
         b?.totalPto ?? 0,
-        b?.accruedDays ?? 0,
+        ...(PTO_ACCRUAL_ENABLED ? [b?.accruedDays ?? 0] : []),
         b?.daysUsed ?? 0,
         b?.daysTaken ?? 0,
         b?.daysScheduled ?? 0,

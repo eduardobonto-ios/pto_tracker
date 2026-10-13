@@ -22,6 +22,7 @@ import { useApp } from '@/context/AppContext';
 import type { RequestEditInput } from '@/context/AppContext';
 import { computeDays } from '@/lib/pto';
 import { formatDateLong, formatDateRange, formatDateTime, formatDays, formatLeaveLength } from '@/lib/utils';
+import { PTO_ACCRUAL_ENABLED } from '@/lib/theme';
 import {
   DURATION_TYPES,
   LEAVE_TYPES,
@@ -108,7 +109,9 @@ export function RequestDetails({ request }: { request: PTORequest }) {
 
         {balance && (
           <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slateish-200 bg-slateish-200 sm:grid-cols-4">
-            <MiniStat label="Accrued" value={`${formatDays(balance.accruedDays)} d`} />
+            {PTO_ACCRUAL_ENABLED && (
+              <MiniStat label="Accrued" value={`${formatDays(balance.accruedDays)} d`} />
+            )}
             <MiniStat label="Used" value={`${formatDays(balance.daysUsed)} d`} />
             <MiniStat label="Pending" value={`${formatDays(balance.pendingDays)} d`} />
             <MiniStat
