@@ -245,7 +245,7 @@ function EmployeeEditForm({
         help={
           employee.ptoRegion === 'US'
             ? 'Leave blank to use the hire date — US staff are eligible from day one. The annual reset keys off this date.'
-            : 'Leave blank to use the standard six months after hire. The annual reset and the +2 increase both key off this date.'
+            : 'Leave blank to use the standard six months after hire. The annual reset keys off this date; the +1 increase keys off the hire date.'
         }
       >
         <Input
@@ -256,7 +256,7 @@ function EmployeeEditForm({
       </Field>
       <p className="rounded-lg bg-slateish-50 px-3 py-2 text-[12px] leading-snug text-slateish-600">
         {employee.ptoRegion !== 'US'
-          ? 'Total PTO is not set per person — it starts at 5 and gains 2 on each anniversary of the eligibility date, capped at 10.'
+          ? 'Total PTO is not set per person — it starts at 5 and gains 1 on each anniversary of the hire date, capped at 10.'
           : employee.ptoPlan === 'tenure_ramp'
             ? 'Total PTO starts at 10 and gains 1 on each anniversary of the hire date, reaching its cap of 15 at five years of service.'
             : 'Total PTO is a fixed figure for US staff and does not grow with tenure.'}

@@ -90,7 +90,7 @@ export type PtoRegion = 'PH' | 'US';
  * Which entitlement plan an employee is on.
  *
  * `fixed`       — US: `fixedPtoDays`, a negotiated figure that never moves.
- *                 PH: the PH ramp, 5 days +2 a year, capped at 10.
+ *                 PH: the PH ramp, 5 days +1 a year, capped at 10.
  * `tenure_ramp` — derived from the hire date in either region: 10 days, +1
  *                 per year of service, capped at 15. Ignores `fixedPtoDays`.
  *

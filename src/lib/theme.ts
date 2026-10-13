@@ -97,7 +97,7 @@ export const PTO_HOURS_PER_DAY = 8;
  *  PH: eligible six months after hire. Entitlement starts at
  *      `PTO_BASE_ENTITLEMENT_DAYS` and gains `PTO_ANNUAL_INCREMENT_DAYS` on
  *      every anniversary of the HIRE date, capped at
- *      `PTO_MAX_ENTITLEMENT_DAYS` — 5, +2 a year, up to 10.
+ *      `PTO_MAX_ENTITLEMENT_DAYS` — 5, +1 a year, up to 10.
  *      Territory Managers are the exception: eligible day one, and on the
  *      tenure ramp below rather than this one.
  *  US: eligible from day one. Two plans, selected by `Employee.ptoPlan`:
@@ -130,7 +130,7 @@ export const PTO_HOURS_PER_DAY = 8;
  * Eduardo 2026-09-25). They still start at ten, and now grow past it.
  */
 export const PTO_BASE_ENTITLEMENT_DAYS = 5;
-export const PTO_ANNUAL_INCREMENT_DAYS = 2;
+export const PTO_ANNUAL_INCREMENT_DAYS = 1;
 export const PTO_MAX_ENTITLEMENT_DAYS = 10;
 
 /**

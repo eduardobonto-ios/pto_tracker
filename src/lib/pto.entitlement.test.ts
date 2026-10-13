@@ -104,38 +104,49 @@ check('ramp still waits for a future eligibility override',
 check('ramp clamps a Feb 29 hire date',
   computeEntitlement(ramp({ hireDate: '2024-02-29' }), AS_OF), 12);
 // ptoPlan is no longer a US-only concept (patch_018). A PH employee put on
-// the ramp takes 10 + 1/yr, not the PH 5 + 2/yr — the same hire date reads 7
+// the ramp takes 10 + 1/yr, not the PH 5 + 1/yr — the same hire date reads 6
 // on the PH ramp and 11 on this one.
 check('ptoPlan now applies to PH staff too',
   computeEntitlement(ph({ ptoPlan: 'tenure_ramp', hireDate: '2025-01-08' }), AS_OF), 11);
-check('the same PH hire date on the default plan still reads 7',
-  computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 7);
+check('the same PH hire date on the default plan still reads 6',
+  computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 6);
 // The ramp moves entitlement; it must NOT move the annual reset, which still
 // follows the eligibility override.
 check('ramp leaves the reset on the eligibility override',
   currentPtoYearStart(ramp({ hireDate: '2025-01-06', eligibilityDateOverride: '2026-01-06' }), AS_OF),
   '2026-01-06');
 
-// --- PH: base 5, +2 per eligibility anniversary, cap 10 --------------------
-// Hired 2025-01-08 → eligible 2025-07-08 → one anniversary passed (2026-07-08).
-check('PH one anniversary → 7', computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 7);
-// Hired 2025-06-30 → one HIRE anniversary passed (2026-06-30) → 7. Under the
+// --- PH: base 5, +1 per HIRE anniversary, cap 10 ---------------------------
+// The increment was cut from 2 to 1 on 2026-10-13 (Will Berget's policy email,
+// confirmed by Eduardo). The cap is unchanged at 10 — but at +1 a year it now
+// takes FIVE anniversaries to reach it instead of three, so the cases below
+// exercise the cap deliberately rather than hitting it by accident.
+// Hired 2025-01-08 → eligible 2025-07-08 → one anniversary passed (2026-01-08).
+check('PH one anniversary → 6', computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 6);
+// Hired 2025-06-30 → one HIRE anniversary passed (2026-06-30) → 6. Under the
 // old eligibility rule this read 5, because 2025-12-30 + 1yr had not arrived.
-check('PH one hire anniversary → 7', computeEntitlement(ph({ hireDate: '2025-06-30' }), AS_OF), 7);
-// Hired 2023-07-10 → three hire anniversaries → 5 + 6 = 11, capped to 10.
-check('PH three hire anniversaries cap at 10',
-  computeEntitlement(ph({ hireDate: '2023-07-10' }), AS_OF), 10);
-// Hired 2022-09-26 → eligible 2023-03-26 → three passed → 11, capped.
-check('PH caps at 10', computeEntitlement(ph({ hireDate: '2022-09-26' }), AS_OF), 10);
+check('PH one hire anniversary → 6', computeEntitlement(ph({ hireDate: '2025-06-30' }), AS_OF), 6);
+// Hired 2023-07-10 → three hire anniversaries → 5 + 3 = 8. This read 10 under
+// the old +2 rule, so it is the case that catches a silent revert.
+check('PH three hire anniversaries → 8',
+  computeEntitlement(ph({ hireDate: '2023-07-10' }), AS_OF), 8);
+// Hired 2022-09-26 → three passed; the fourth falls the day AFTER AS_OF.
+check('PH anniversary one day away does not count',
+  computeEntitlement(ph({ hireDate: '2022-09-26' }), AS_OF), 8);
+// Exactly five anniversaries → 5 + 5 = 10: the first year the cap binds.
+check('PH reaches the cap at five anniversaries',
+  computeEntitlement(ph({ hireDate: '2021-01-01' }), AS_OF), 10);
+// Far past it — the cap still holds rather than running away.
+check('PH caps at 10', computeEntitlement(ph({ hireDate: '2015-01-01' }), AS_OF), 10);
 check('PH not yet eligible → 0', computeEntitlement(ph({ hireDate: '2026-05-26' }), AS_OF), 0);
 // The ramp keys off the HIRE date. These two differ by six months, so this is
 // the case that catches a regression to the old eligibility-based rule.
 check('PH ramp keys off hire, not eligibility',
-  computeEntitlement(ph({ hireDate: '2025-06-23' }), AS_OF), 7);
+  computeEntitlement(ph({ hireDate: '2025-06-23' }), AS_OF), 6);
 // An override moves eligibility and the reset, but NOT the ramp — years of
 // service are years of service. Same hire date, same answer.
 check('an override does not shift the ramp',
-  computeEntitlement(ph({ hireDate: '2025-06-23', eligibilityDateOverride: '2025-01-01' }), AS_OF), 7);
+  computeEntitlement(ph({ hireDate: '2025-06-23', eligibilityDateOverride: '2025-01-01' }), AS_OF), 6);
 
 // --- PTO year reset --------------------------------------------------------
 check('PH year starts on the hire anniversary',
@@ -179,7 +190,7 @@ check('TM with one anniversary climbs to 11',
 check('TM ramp caps at 15, above the PH cap of 10',
   computeEntitlement(tm({ hireDate: '2015-06-15' }), AS_OF), 15);
 check('same dates, non-TM, climbs the PH ramp instead',
-  computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 7);
+  computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 6);
 // The ramp must not reach back past eligibility. A TM hired in the future is
 // still not eligible, so it stays 0 rather than paying out the base.
 check('TM day-one eligibility survived the move to the ramp',
