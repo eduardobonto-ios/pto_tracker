@@ -57,7 +57,7 @@ const ramp = (over: Partial<Employee> = {}): Employee =>
 
 // --- eligibility -----------------------------------------------------------
 check('PH eligible six months after hire', eligibilityDateFor(ph({ hireDate: '2025-01-08' })), '2025-07-08');
-check('US eligible on day one', eligibilityDateFor(us({ hireDate: '2026-08-11' })), '2026-08-11');
+check('US waits six months too', eligibilityDateFor(us({ hireDate: '2026-08-11' })), '2027-02-11');
 check('override beats the PH rule',
   eligibilityDateFor(ph({ hireDate: '2025-01-08', eligibilityDateOverride: '2025-03-01' })), '2025-03-01');
 check('override beats the US rule',
@@ -66,14 +66,15 @@ check('override beats the US rule',
 check('eligibility clamps short months', eligibilityDateFor(ph({ hireDate: '2024-08-31' })), '2025-02-28');
 
 // --- US: fixed, never grows ------------------------------------------------
-check('US takes fixedPtoDays', computeEntitlement(us({ fixedPtoDays: 22, hireDate: '2026-08-11' }), AS_OF), 22);
+check('US takes fixedPtoDays', computeEntitlement(us({ fixedPtoDays: 22, hireDate: '2020-08-11' }), AS_OF), 22);
 check('US does not grow with tenure',
   computeEntitlement(us({ fixedPtoDays: 20, hireDate: '2019-06-13' }), AS_OF), 20);
 check('US with no fixed days reads 0',
   computeEntitlement(us({ fixedPtoDays: undefined, hireDate: '2026-01-06' }), AS_OF), 0);
-// Hired today: eligible immediately, so entitlement is live at once.
-check('US hired today is already entitled',
-  computeEntitlement(us({ fixedPtoDays: 10, hireDate: '2026-09-25' }), AS_OF), 10);
+// Hired today: six months short, so nothing is drawable yet. This read 10
+// until 2026-10-13, when the six-month wait became universal.
+check('US hired today must still wait six months',
+  computeEntitlement(us({ fixedPtoDays: 10, hireDate: '2026-09-25' }), AS_OF), 0);
 
 // --- US tenure ramp: 10 base, +1 per year of service, cap 15 ---------------
 // From Jason Welsford's policy email, applied by patch_011. The two real
@@ -155,11 +156,39 @@ check('a July anniversary has still not come round',
 check('PH caps at 10',
   computeEntitlement(ph({ hireDate: '2020-01-01' }), new Date(2032, 0, 2)), 10);
 
+// --- ramp_exempt: the ramp's endpoints, nothing between ---------------------
+// Will Berget, hired 2026-08-19. Eligible from day one, unlike everyone else,
+// because the plan has to pay its base inside the hire year.
+const exempt = (over: Partial<Employee> = {}): Employee =>
+  us({ ptoPlan: 'ramp_exempt', fixedPtoDays: 10, ...over });
+check('exempt is eligible from day one',
+  eligibilityDateFor(exempt({ hireDate: '2026-08-19' })), '2026-08-19');
+check('exempt reads the ramp base in the hire year',
+  computeEntitlement(exempt({ hireDate: '2026-08-19' }), AS_OF), 10);
+// The whole point: the first anniversary goes straight to the cap, not to 11.
+check('exempt jumps to the cap on the first anniversary',
+  computeEntitlement(exempt({ hireDate: '2026-08-19' }), new Date(2027, 7, 19)), 15);
+check('and the day before is still the base',
+  computeEntitlement(exempt({ hireDate: '2026-08-19' }), new Date(2027, 7, 18)), 10);
+check('exempt stays at the cap thereafter',
+  computeEntitlement(exempt({ hireDate: '2026-08-19' }), new Date(2031, 0, 1)), 15);
+// A plain ramp hire on the same date would climb a day at a time instead.
+check('the ordinary ramp would read 11 on that date',
+  computeEntitlement(ramp({ hireDate: '2026-08-19' }), new Date(2027, 7, 19)), 11);
+
 // --- PTO year reset --------------------------------------------------------
 check('PH year starts on the hire anniversary',
   currentPtoYearStart(ph({ hireDate: '2025-01-08' }), AS_OF), '2026-01-08');
-check('US year starts on hire anniversary (= eligibility)',
-  currentPtoYearStart(us({ hireDate: '2025-12-01' }), AS_OF), '2025-12-01');
+// The anchor is still the HIRE date, but a cycle cannot open before any leave
+// could be taken. Hired 2025-12-01 with no anniversary yet, so the first cycle
+// floors at the six-month mark. This read 2025-12-01 while US staff were
+// eligible on day one.
+check('a first US cycle floors at the six-month mark',
+  currentPtoYearStart(us({ hireDate: '2025-12-01' }), AS_OF), '2026-06-01');
+// Once an anniversary has passed the anchor wins and the floor is irrelevant —
+// which is every US employee on the roster today.
+check('an established US cycle follows the hire anniversary',
+  currentPtoYearStart(us({ hireDate: '2020-12-01' }), AS_OF), '2025-12-01');
 check('the cycle follows the hire anniversary once one has passed',
   currentPtoYearStart(ph({ hireDate: '2025-06-30' }), AS_OF), '2026-06-30');
 // Floor: hired 2025-11-01, eligible 2026-05-01, and the next hire anniversary
@@ -181,15 +210,16 @@ check('reset follows the override',
 const tm = (over: Partial<Employee> = {}): Employee =>
   ph({ jobTitle: 'Territory Manager', ...over });
 
-check('TM is eligible on the hire date, not six months later',
-  eligibilityDateFor(tm({ hireDate: '2025-06-15' })), '2025-06-15');
-check('same hire date, non-TM, still waits six months',
+// TMs lost their day-one exemption on 2026-10-13: six months is universal.
+check('TM waits six months like everyone else',
+  eligibilityDateFor(tm({ hireDate: '2025-06-15' })), '2025-12-15');
+check('same hire date, non-TM, waits the same six months',
   eligibilityDateFor(ph({ hireDate: '2025-06-15' })), '2025-12-15');
-// Dylan Lavern's real case: hired 2026-06-15, no anniversary yet, so the ramp
-// base is all he has. This is the case that proves rule 2 did not cost him
-// anything — he read 10 under the flat rule and still reads 10.
-check('TM with no anniversary sits on the ramp base',
-  computeEntitlement(tm({ hireDate: '2026-06-15' }), AS_OF), 10);
+// Dylan Lavern's real case: hired 2026-06-15, so his six months land on
+// 2026-12-15. Until then he draws nothing — this is the one person the
+// universal six-month wait actually costs, and it is deliberate.
+check('TM inside six months draws nothing',
+  computeEntitlement(tm({ hireDate: '2026-06-15' }), AS_OF), 0);
 // Cleon Kemp / Josh Kirk / Amr Shweiky: one completed year, so 11 rather than
 // the flat 10 they used to read.
 check('TM with one anniversary climbs to 11',
@@ -198,10 +228,9 @@ check('TM ramp caps at 15, above the PH cap of 10',
   computeEntitlement(tm({ hireDate: '2015-06-15' }), AS_OF), 15);
 check('same dates, non-TM, stays on the PH base',
   computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 5);
-// The ramp must not reach back past eligibility. A TM hired in the future is
-// still not eligible, so it stays 0 rather than paying out the base.
-check('TM day-one eligibility survived the move to the ramp',
-  eligibilityDateFor(tm({ hireDate: '2026-06-15' })), '2026-06-15');
+// The ramp must not reach back past eligibility.
+check('TM eligibility is six months after hire',
+  eligibilityDateFor(tm({ hireDate: '2026-06-15' })), '2026-12-15');
 // A future hire date is still a future hire date — day one is not day zero.
 check('TM hired after today is not yet entitled',
   computeEntitlement(tm({ hireDate: '2026-10-01' }), AS_OF), 0);

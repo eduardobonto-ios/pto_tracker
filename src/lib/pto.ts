@@ -44,13 +44,17 @@ export interface DepartmentLeaveConflict {
  * When an employee becomes eligible to draw leave.
  *
  * An admin-set `eligibilityDateOverride` wins outright. Otherwise:
- *   US staff             eligible from their first day.
- *   Territory Managers   eligible from their first day, in either region.
- *                        Confirmed by Eduardo 2026-09-30 — the six-month rule
- *                        does not apply to them, which pairs with the existing
- *                        rule that they take the full entitlement at once
- *                        rather than ramping from the base.
- *   everyone else (PH)   six months after hire.
+ *   `ramp_exempt`        eligible from their first day.
+ *   everyone else        six months after hire, both regions.
+ *
+ * SIX MONTHS IS NOW UNIVERSAL. Confirmed by Eduardo 2026-10-13: the US side
+ * gets "10 after 6 months" exactly as PH gets 5, so the day-one rule for US
+ * staff and the separate day-one rule for Territory Managers (2026-09-30) are
+ * both gone. Only `ramp_exempt` keeps day one, because that plan has to pay
+ * its base in the hire year.
+ *
+ * In practice this moves one person: everyone else on the US side passed six
+ * months long ago.
  *
  * THIS ALSO MOVES THE ANNUAL RESET. `currentPtoYearStart` keys off this date,
  * so making a Territory Manager eligible six months earlier starts their PTO
@@ -59,11 +63,13 @@ export interface DepartmentLeaveConflict {
  * runs from their hire anniversary, not from a six-month mark they never had.
  */
 export function eligibilityDateFor(
-  employee: Pick<Employee, 'hireDate' | 'jobTitle' | 'ptoRegion' | 'eligibilityDateOverride'>,
+  employee: Pick<
+    Employee,
+    'hireDate' | 'jobTitle' | 'ptoRegion' | 'ptoPlan' | 'eligibilityDateOverride'
+  >,
 ): string {
   if (employee.eligibilityDateOverride) return employee.eligibilityDateOverride;
-  if (employee.ptoRegion === 'US') return employee.hireDate;
-  if (PTO_TERRITORY_MANAGER_JOB_TITLES.includes(employee.jobTitle)) return employee.hireDate;
+  if (employee.ptoPlan === 'ramp_exempt') return employee.hireDate;
   return eligibilityDate(employee.hireDate);
 }
 
@@ -146,6 +152,15 @@ export function computeEntitlement(
   const eligible = parseISODate(eligibilityDateFor(employee));
   if (asOf.getTime() < eligible.getTime()) return 0;
 
+  // The ramp's two endpoints and nothing between them. Checked before the
+  // region, because it is a property of the person's agreement, not of where
+  // they sit.
+  if (employee.ptoPlan === 'ramp_exempt') {
+    return anniversariesSince(employee.hireDate, asOf) >= 1
+      ? PTO_TENURE_RAMP_MAX_DAYS
+      : PTO_TENURE_RAMP_BASE_DAYS;
+  }
+
   if (employee.ptoRegion === 'US') {
     if (employee.ptoPlan === 'tenure_ramp') return tenureRampDays(employee.hireDate, asOf);
     // Otherwise a negotiated figure that never moves with tenure. It is the
@@ -209,7 +224,10 @@ export function computeEntitlement(
  * hire doesn't inherit a start date before they could have used any leave.
  */
 export function currentPtoYearStart(
-  employee: Pick<Employee, 'hireDate' | 'jobTitle' | 'ptoRegion' | 'eligibilityDateOverride'>,
+  employee: Pick<
+    Employee,
+    'hireDate' | 'jobTitle' | 'ptoRegion' | 'ptoPlan' | 'eligibilityDateOverride'
+  >,
   asOf: Date = new Date(),
 ): string {
   // THE ANCHOR IS THE HIRE DATE, not the eligibility date. Confirmed by

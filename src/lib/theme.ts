@@ -276,6 +276,17 @@ export const PTO_TENURE_RAMP_YEARS_TO_MAX = 5;
 export const PTO_TERRITORY_MANAGER_JOB_TITLES = ['Territory Manager'];
 
 /**
+ * `ptoPlan === 'ramp_exempt'` — the tenure ramp's two endpoints and nothing
+ * between them: `PTO_TENURE_RAMP_BASE_DAYS` until the first hire anniversary,
+ * `PTO_TENURE_RAMP_MAX_DAYS` from it onwards. Eligible from day one, so the
+ * base is drawable immediately rather than after six months.
+ *
+ * Will Berget, confirmed by Eduardo 2026-10-13: "Will is exempted, so Will
+ * next year is 15 already". He is the only person on it. Everyone else on the
+ * ramp climbs a day a year and reaches 15 at five years' service.
+ */
+
+/**
  * Manager Approval Workflow routing (job-title/department manager overrides,
  * the Will+Princes default pair, and Princes's management-access email) used
  * to be hardcoded here. It now lives in Supabase (`pto_approver_routing` /

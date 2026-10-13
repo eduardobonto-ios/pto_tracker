@@ -94,11 +94,14 @@ export type PtoRegion = 'PH' | 'US';
  *                 `PTO_PH_RAMP_START`, capped at 10.
  * `tenure_ramp` — derived from the hire date in either region: 10 days, +1
  *                 per year of service, capped at 15. Ignores `fixedPtoDays`.
+ * `ramp_exempt` — the ramp's base and cap, with nothing in between: 10 days,
+ *                 then 15 from the first hire anniversary. Also eligible from
+ *                 day one. Will Berget only — see PTO_TENURE_RAMP_* notes.
  *
  * PH Territory Managers are on the tenure ramp by job title whatever this
  * column says — see `PTO_TERRITORY_MANAGER_JOB_TITLES` in `lib/theme.ts`.
  */
-export type PtoPlan = 'fixed' | 'tenure_ramp';
+export type PtoPlan = 'fixed' | 'tenure_ramp' | 'ramp_exempt';
 
 export interface Employee {
   id: string;
