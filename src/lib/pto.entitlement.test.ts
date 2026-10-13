@@ -79,25 +79,32 @@ check('US with no fixed days reads 0',
 check('US hired today must still wait six months',
   computeEntitlement(us({ fixedPtoDays: 10, hireDate: '2026-09-25' }), AS_OF), 0);
 
-// --- US tenure ramp: 10 base, +1 per year of service, cap 15 ---------------
-// From Jason Welsford's policy email, applied by patch_011. The two real
-// people on this plan, with their directory hire dates:
-check('Darwin Mushrush (hired 2026-01-12, 0 yrs) → 10',
-  computeEntitlement(ramp({ hireDate: '2026-01-12' }), AS_OF), 10);
-check('Daniel York (hired 2025-01-06, 1 yr) → 11',
-  computeEntitlement(ramp({ hireDate: '2025-01-06' }), AS_OF), 11);
-// The cap has to land exactly on the fifth anniversary — that is the whole
-// reason the ramp keys off service rather than starting everyone at 10 today.
-check('four years of service → 14',
-  computeEntitlement(ramp({ hireDate: '2022-01-06' }), AS_OF), 14);
-check('five years of service → 15',
-  computeEntitlement(ramp({ hireDate: '2021-01-06' }), AS_OF), 15);
-check('ramp caps at 15 and does not keep climbing',
-  computeEntitlement(ramp({ hireDate: '2010-01-06' }), AS_OF), 15);
-// The ramp counts HIRE anniversaries. Everything else in this file counts
-// eligibility anniversaries, so this is the case that catches a copy-paste.
+// --- US tenure ramp: 10 base, +1 per anniversary since the plan start ------
+// Service before PTO_TENURE_RAMP_START earns nothing — everyone on the ramp
+// was granted the base when the plan began, exactly as the PH plan works.
+// Confirmed by Eduardo 2026-10-14. These read 11/14/15 while the ramp counted
+// total service.
+check('no service at all → the base', computeEntitlement(ramp({ hireDate: '2026-01-12' }), AS_OF), 10);
+check('one year of service → still the base',
+  computeEntitlement(ramp({ hireDate: '2025-01-06' }), AS_OF), 10);
+check('four years of service → still the base',
+  computeEntitlement(ramp({ hireDate: '2022-01-06' }), AS_OF), 10);
+check('sixteen years of service → still the base',
+  computeEntitlement(ramp({ hireDate: '2010-01-06' }), AS_OF), 10);
+// An anniversary AFTER the plan start does earn one. 6 Jan 2027 is the first.
+const JAN_2027 = new Date(2027, 0, 6);
+check('the first anniversary after the plan start earns a day',
+  computeEntitlement(ramp({ hireDate: '2025-01-06' }), JAN_2027), 11);
+check('and the day before it does not',
+  computeEntitlement(ramp({ hireDate: '2025-01-06' }), new Date(2027, 0, 5)), 10);
+// The cap still binds, five earned increases after the plan start.
+check('ramp caps at 15',
+  computeEntitlement(ramp({ hireDate: '2025-01-06' }), new Date(2032, 0, 6)), 15);
+check('and does not keep climbing past it',
+  computeEntitlement(ramp({ hireDate: '2025-01-06' }), new Date(2040, 0, 6)), 15);
+// The ramp counts HIRE anniversaries, not eligibility ones.
 check('ramp keys off hire date, not the eligibility override',
-  computeEntitlement(ramp({ hireDate: '2025-01-06', eligibilityDateOverride: '2026-01-06' }), AS_OF), 11);
+  computeEntitlement(ramp({ hireDate: '2025-01-06', eligibilityDateOverride: '2026-01-06' }), JAN_2027), 11);
 // patch_011 leaves fixed_pto_days populated on ramp employees on purpose.
 check('tenure ramp ignores a stale fixedPtoDays',
   computeEntitlement(ramp({ fixedPtoDays: 20, hireDate: '2026-01-12' }), AS_OF), 10);
@@ -106,12 +113,13 @@ check('ramp still waits for a future eligibility override',
 // Feb 29 has no anniversary in a common year; it must clamp back, not skip to
 // Mar 1 and lose a day of service.
 check('ramp clamps a Feb 29 hire date',
-  computeEntitlement(ramp({ hireDate: '2024-02-29' }), AS_OF), 12);
+  computeEntitlement(ramp({ hireDate: '2024-02-29' }), new Date(2027, 2, 1)), 11);
+
 // ptoPlan is no longer a US-only concept (patch_018). A PH employee put on
 // the ramp takes 10 + 1/yr from the HIRE date, not the PH base of 5 counted
 // from the plan start — the same hire date reads 5 on the PH plan and 11 here.
 check('ptoPlan now applies to PH staff too',
-  computeEntitlement(ph({ ptoPlan: 'tenure_ramp', hireDate: '2025-01-08' }), AS_OF), 11);
+  computeEntitlement(ph({ ptoPlan: 'tenure_ramp', hireDate: '2025-01-08' }), AS_OF), 10);
 check('the same PH hire date on the default plan still reads 5',
   computeEntitlement(ph({ hireDate: '2025-01-08' }), AS_OF), 5);
 // The ramp moves entitlement; it must NOT move the annual reset, which still
@@ -195,7 +203,7 @@ check('a green row stored as fixed still takes the ramp',
   computeEntitlement(
     us({ email: 'dylan@valveman.com', ptoPlan: 'fixed', fixedPtoDays: 5, hireDate: '2024-01-01' }),
     AS_OF,
-  ), 12);
+  ), 10);
 // ...and it is reported rather than silently corrected.
 // Filtered to the row under test: a one-element roster also reports the other
 // five green addresses as absent, which is itself correct behaviour.
@@ -263,10 +271,10 @@ check('TM inside six months draws nothing',
   computeEntitlement(tm({ hireDate: '2026-06-15' }), AS_OF), 0);
 // Cleon Kemp / Josh Kirk / Amr Shweiky: one completed year, so 11 rather than
 // the flat 10 they used to read.
-check('TM with one anniversary climbs to 11',
-  computeEntitlement(tm({ hireDate: '2025-06-15' }), AS_OF), 11);
+check('TM starts on the ramp base like everyone else',
+  computeEntitlement(tm({ hireDate: '2025-06-15' }), AS_OF), 10);
 check('TM ramp caps at 15, above the PH cap of 10',
-  computeEntitlement(tm({ hireDate: '2015-06-15' }), AS_OF), 15);
+  computeEntitlement(tm({ hireDate: '2025-06-15' }), new Date(2032, 5, 15)), 15);
 check('same dates, non-TM, stays on the PH base',
   computeEntitlement(ph({ hireDate: '2025-06-15' }), AS_OF), 5);
 // The ramp must not reach back past eligibility.

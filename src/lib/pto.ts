@@ -20,6 +20,7 @@ import {
   PTO_TENURE_RAMP_BASE_DAYS,
   PTO_TENURE_RAMP_INCREMENT_DAYS,
   PTO_TENURE_RAMP_MAX_DAYS,
+  PTO_TENURE_RAMP_START,
   PTO_GREEN_PLAN_EMAILS,
   PTO_TERRITORY_MANAGER_JOB_TITLES,
 } from './theme';
@@ -158,9 +159,15 @@ function anniversariesSince(startIso: string, asOf: Date): number {
  * date, not of the eligibility date, and it ignores `fixedPtoDays` outright.
  */
 function tenureRampDays(hireDateIso: string, asOf: Date): number {
+  // Only anniversaries from PTO_TENURE_RAMP_START onwards count. Everyone on
+  // the ramp began on the base when the plan started, however long they had
+  // already worked, so the anniversaries that fell before it earned nothing —
+  // the same treatment the PH plan gets.
+  const earned =
+    anniversariesSince(hireDateIso, asOf) -
+    anniversariesSince(hireDateIso, dayBefore(PTO_TENURE_RAMP_START));
   const days =
-    PTO_TENURE_RAMP_BASE_DAYS +
-    PTO_TENURE_RAMP_INCREMENT_DAYS * anniversariesSince(hireDateIso, asOf);
+    PTO_TENURE_RAMP_BASE_DAYS + PTO_TENURE_RAMP_INCREMENT_DAYS * Math.max(earned, 0);
   return Math.min(days, PTO_TENURE_RAMP_MAX_DAYS);
 }
 

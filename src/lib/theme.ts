@@ -260,6 +260,29 @@ export const PTO_ACCRUAL_ENABLED = false;
 export const PTO_TENURE_RAMP_BASE_DAYS = 10;
 export const PTO_TENURE_RAMP_INCREMENT_DAYS = 1;
 export const PTO_TENURE_RAMP_MAX_DAYS = 15;
+
+/**
+ * The date the tenure ramp started counting annual increases — the green
+ * group's equivalent of `PTO_PH_RAMP_START`.
+ *
+ * The green staff were all granted the ramp BASE when the plan began in 2026;
+ * service worked before that does not carry. Eduardo 2026-10-14: "Kleon Kemp,
+ * Dan York, Amr Shweiky and Josh Kirk should still 10, do not base on their
+ * year hire, the PTO just gave this June 2026, so all of them will +1 next
+ * year." Without this they read 11, 11, 11 and 12 off their service.
+ *
+ * WHY NOT 1 JUNE, when that is when the PTO was handed out: Cleon Kemp's hire
+ * anniversary is 14 October, which falls after a June cut-off and would give
+ * him an increase this year — and he is named first in the list that must
+ * stay on 10. So the cut-off has to sit after 14 October 2026 and on or
+ * before 6 January 2027, Dan York's next anniversary. Any date in that window
+ * produces the same answer for all six; 1 November is inside it.
+ *
+ * NOTE THE PH CUT-OFF IS DIFFERENT (`PTO_PH_RAMP_START`, 1 August). It has to
+ * be: Kazutomo Nishimura's 26 September anniversary DOES earn him a +1 this
+ * year, and Cleon's 14 October one does NOT. No single date satisfies both.
+ */
+export const PTO_TENURE_RAMP_START = '2026-11-01';
 export const PTO_TENURE_RAMP_YEARS_TO_MAX = 5;
 /**
  * Territory Managers are treated differently in two ways, and both are keyed
