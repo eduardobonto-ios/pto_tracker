@@ -9,6 +9,7 @@ import { PayBadge, StatusBadge } from '@/components/StatusBadge';
 import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
 import { useApp, type NewRequestInput } from '@/context/AppContext';
 import { accruedDays, computeDays, defaultPayStatus, round } from '@/lib/pto';
+import { PTO_ACCRUAL_ENABLED } from '@/lib/theme';
 import { formatDateRange, formatDays, parseISODate, todayISO } from '@/lib/utils';
 import {
   DURATION_TYPES,
@@ -108,11 +109,11 @@ export function useLeaveRequestForm({
   const selectedBalance = balances[selectedEmployee.id];
   const eligible = selectedBalance?.eligible ?? true;
 
-  // MEASURED AS OF THE LEAVE'S OWN START DATE, not today. Accrual keeps
-  // earning while a request sits in the future, so booking December leave in
-  // September has to be checked against what will have accrued by December —
-  // otherwise every advance booking looks like an overdraft and the warning
-  // becomes noise people learn to ignore.
+  // MEASURED AS OF THE LEAVE'S OWN START DATE, not today. The entitlement
+  // itself can grow between now and the leave — the annual +1 lands on the
+  // hire anniversary — so booking December leave in September is checked
+  // against what the allowance will be in December. With accrual on it also
+  // covered what would have been earned by then.
   //
   // Everything already committed comes out of that: leave taken, leave
   // scheduled, and other Pending requests, which have not drawn down any
@@ -350,12 +351,13 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
             This request is {formatDays(days)} day(s), which is{' '}
             {formatDays(overdrawnBy)} day(s) more than{' '}
             {selectedEmployee.id === currentUser.id ? 'you have' : `${selectedEmployee.name} has`}{' '}
-            will have earned by then — PTO accrues every two weeks across the year, and{' '}
+            {PTO_ACCRUAL_ENABLED ? 'will have earned by then' : 'left'} —{' '}
+            {PTO_ACCRUAL_ENABLED ? 'PTO accrues every two weeks across the year, and ' : ''}
             {formatDays(Math.max(daysAvailable, 0))} day(s) are available once other pending
             requests are counted. It can still be filed and stays{' '}
             <strong className="font-semibold">paid</strong>; the balance will simply show{' '}
-            <strong className="font-semibold">−{formatDays(overdrawnBy)}</strong> until enough has
-            accrued to cover it.
+            <strong className="font-semibold">−{formatDays(overdrawnBy)}</strong>
+            {PTO_ACCRUAL_ENABLED ? ' until enough has accrued to cover it' : ''}.
           </p>
         </div>
       )}
