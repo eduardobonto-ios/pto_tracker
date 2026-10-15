@@ -8,7 +8,7 @@ import { DetailRow, PillGroup } from '@/components/ui/Misc';
 import { PayBadge, StatusBadge } from '@/components/StatusBadge';
 import { DepartmentLeaveNotice } from '@/components/DepartmentLeaveNotice';
 import { useApp, type NewRequestInput } from '@/context/AppContext';
-import { accruedDays, computeDays, defaultPayStatus, round } from '@/lib/pto';
+import { accruedDays, computeDays, payStatusFor, round } from '@/lib/pto';
 import { PTO_ACCRUAL_ENABLED } from '@/lib/theme';
 import { formatDateRange, formatDays, parseISODate, todayISO } from '@/lib/utils';
 import {
@@ -134,21 +134,21 @@ export function useLeaveRequestForm({
   // one: a full week booked early in a cycle costs more than has been earned
   // yet, even though it is well inside the year's entitlement.
   //
-  // This used to file such a request as Unpaid. That silently made the
-  // overdraw invisible, because unpaid days never deduct: the employee kept
-  // their balance and lost their pay, which is the opposite of what was
-  // asked for. Pay status now follows the leave type alone, and the shortfall
-  // shows on the balance as a negative.
+  // ONCE THE ALLOWANCE IS SPENT, FURTHER LEAVE IS UNPAID. See payStatusFor in
+  // lib/pto.ts for why this reversed on 2026-10-15: with accrual gone there is
+  // no future earning to borrow against, so a shortfall is no longer an
+  // overdraft against days you will earn — it is leave beyond the year's
+  // entitlement. A partly covered request stays paid; see below.
   //
   // Eligibility is different and still gates pay. Someone who has not reached
   // their eligibility date has no entitlement to draw against at all, so
   // their leave is genuinely unpaid rather than borrowed.
   const overdrawnBy = hasSufficientBalance ? 0 : round(days - daysAvailable);
-  const payStatus: PayStatus = !eligible
-    ? 'Unpaid'
-    : form.leaveType
-      ? defaultPayStatus(form.leaveType)
-      : 'Paid';
+  const payStatus: PayStatus = payStatusFor({
+    leaveType: form.leaveType,
+    eligible,
+    daysAvailable,
+  });
 
   function validate() {
     const e: Record<string, string> = {};
@@ -354,10 +354,22 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
             {PTO_ACCRUAL_ENABLED ? 'will have earned by then' : 'left'} —{' '}
             {PTO_ACCRUAL_ENABLED ? 'PTO accrues every two weeks across the year, and ' : ''}
             {formatDays(Math.max(daysAvailable, 0))} day(s) are available once other pending
-            requests are counted. It can still be filed and stays{' '}
-            <strong className="font-semibold">paid</strong>; the balance will simply show{' '}
-            <strong className="font-semibold">−{formatDays(overdrawnBy)}</strong>
-            {PTO_ACCRUAL_ENABLED ? ' until enough has accrued to cover it' : ''}.
+            requests are counted.{' '}
+            {daysAvailable <= 0 ? (
+              <>
+                The allowance is fully used, so this will be filed as{' '}
+                <strong className="font-semibold">unpaid</strong> and the balance stays at{' '}
+                <strong className="font-semibold">0</strong>.
+              </>
+            ) : (
+              <>
+                It can still be filed and stays{' '}
+                <strong className="font-semibold">paid</strong>; the balance will show{' '}
+                <strong className="font-semibold">−{formatDays(overdrawnBy)}</strong>. To keep the{' '}
+                {formatDays(daysAvailable)} day(s) still covered on full pay, file those as a
+                separate request.
+              </>
+            )}
           </p>
         </div>
       )}

@@ -10,6 +10,7 @@ import {
   round,
   computeBalance,
   computeEntitlement,
+  payStatusFor,
   greenPlanMismatches,
   isGreenPlanEmployee,
   currentPtoYearStart,
@@ -224,6 +225,29 @@ check('the exempt plan is not treated as drift',
 // A green address that has left the roster entirely is also drift.
 check('a green address missing from the roster is reported',
   greenPlanMismatches([]).length, 6);
+
+// --- pay status at filing time ---------------------------------------------
+// Reversed on 2026-10-15: once the allowance is spent, further leave is unpaid
+// rather than paid-and-negative. See payStatusFor for why accrual's removal
+// changed the answer.
+check('inside the allowance is paid',
+  payStatusFor({ leaveType: 'Vacation Leave', eligible: true, daysAvailable: 3 }), 'Paid');
+check('allowance exactly spent is unpaid',
+  payStatusFor({ leaveType: 'Vacation Leave', eligible: true, daysAvailable: 0 }), 'Unpaid');
+check('already overdrawn is unpaid',
+  payStatusFor({ leaveType: 'Vacation Leave', eligible: true, daysAvailable: -2 }), 'Unpaid');
+// A partly covered request keeps full pay: one pay status covers every day of
+// a request, so marking it unpaid would cost days the employee had earned.
+check('partly covered stays paid',
+  payStatusFor({ leaveType: 'Vacation Leave', eligible: true, daysAvailable: 2 }), 'Paid');
+// Not eligible beats everything — there is no entitlement to draw against.
+check('not eligible is unpaid even with days showing',
+  payStatusFor({ leaveType: 'Vacation Leave', eligible: false, daysAvailable: 5 }), 'Unpaid');
+// The leave type still decides on its own.
+check('Unpaid Leave is unpaid even with days left',
+  payStatusFor({ leaveType: 'Unpaid Leave', eligible: true, daysAvailable: 5 }), 'Unpaid');
+check('no leave type chosen yet, with days left, is paid',
+  payStatusFor({ leaveType: undefined, eligible: true, daysAvailable: 5 }), 'Paid');
 
 // --- PTO year reset --------------------------------------------------------
 check('PH year starts on the hire anniversary',

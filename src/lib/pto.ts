@@ -589,3 +589,46 @@ export function round(n: number): number {
 export function defaultPayStatus(leaveType: string): 'Paid' | 'Unpaid' {
   return leaveType === 'Unpaid Leave' ? 'Unpaid' : 'Paid';
 }
+
+/**
+ * Pay status for a request as it is filed. Checked in this order:
+ *
+ *   not eligible        Unpaid — no entitlement exists to draw against yet.
+ *   'Unpaid Leave'      Unpaid — the leave type says so outright.
+ *   allowance used up   Unpaid — nothing left to charge it against.
+ *   otherwise           Paid.
+ *
+ * THE THIRD RULE IS NEW (2026-10-15) AND REVERSES AN EARLIER DECISION, so the
+ * reasoning matters. Over-allowance leave used to be filed Paid and left to
+ * show a negative balance, because back then "insufficient" meant *more than
+ * has accrued so far this cycle* — the employee would have earned those days
+ * by the time they took them, and Will Berget's policy email asked for the
+ * overdraft outright, "to protect us against using all PTO at once after their
+ * work anniversary, then quitting".
+ *
+ * Accrual was switched off on 2026-10-13, and that changed what the shortfall
+ * means. The whole year is granted at the start of the cycle, so there is no
+ * future earning to borrow against: being short now means the annual allowance
+ * is genuinely spent, and a further day is unpaid time off rather than PTO.
+ * Raised by Princes Gomez filing a real request, confirmed by Eduardo.
+ *
+ * The old objection — that unpaid days never deduct, so the employee kept
+ * their balance AND lost their pay — does not apply here. At zero available
+ * the balance correctly stays at zero instead of going negative.
+ *
+ * ONLY WHEN THE ALLOWANCE IS FULLY SPENT. A request that is partly covered
+ * (two days left, three requested) stays Paid, because a request carries one
+ * pay status for all its days and marking the whole thing unpaid would cost
+ * the employee two days they had every right to. The form tells them to file
+ * the covered days separately.
+ */
+export function payStatusFor(opts: {
+  leaveType?: string | null;
+  eligible: boolean;
+  daysAvailable: number;
+}): 'Paid' | 'Unpaid' {
+  if (!opts.eligible) return 'Unpaid';
+  if (opts.leaveType && defaultPayStatus(opts.leaveType) === 'Unpaid') return 'Unpaid';
+  if (opts.daysAvailable <= 0) return 'Unpaid';
+  return 'Paid';
+}
