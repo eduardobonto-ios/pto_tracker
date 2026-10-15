@@ -153,10 +153,15 @@ function newRequestApprovers(
 ): string[] {
   const isSelf = (email: string) => email.toLowerCase() === employee?.email.toLowerCase();
 
+  // Named approver first. Will Berget's layout assigns one per person, and an
+  // explicit decision about this employee outranks a job-title or department
+  // rule that merely happens to match them.
+  const namedApprover = employee ? routing.employeeApproverEmail[employee.id] : undefined;
   const jobTitleManager = employee ? routing.jobTitleManagerEmail[employee.jobTitle] : undefined;
   const departmentManager = employee ? routing.departmentManagerEmail[employee.department] : undefined;
   const candidates =
-    jobTitleManager ? [jobTitleManager]
+    namedApprover ? [namedApprover]
+    : jobTitleManager ? [jobTitleManager]
     : departmentManager ? [departmentManager]
     // Both default slots can point at the same address (e.g. while testing
     // with a single inbox), so dedupe rather than emailing them twice.

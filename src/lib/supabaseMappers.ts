@@ -8,6 +8,15 @@ import type { Department, Employee, PTORequest, UserAccount } from '@/types';
 import { supabase } from './supabaseClient';
 
 export interface ApproverRouting {
+  /**
+   * Per-employee approver, keyed by employee id — the approval layout Will
+   * Berget sent on 2026-10-15, which names an approver for each of the 27
+   * rather than deriving one from a job title or a department.
+   *
+   * HIGHEST PRECEDENCE. A named approver is an explicit decision about a
+   * specific person and must beat any rule that merely happens to match them.
+   */
+  employeeApproverEmail: Record<string, string>;
   jobTitleManagerEmail: Record<string, string>;
   departmentManagerEmail: Partial<Record<Department, string>>;
   willEmail: string;
@@ -88,15 +97,18 @@ export async function loadApproverRouting(): Promise<ApproverRouting> {
   if (routingError) throw routingError;
   if (settingsError) throw settingsError;
 
+  const employeeApproverEmail: Record<string, string> = {};
   const jobTitleManagerEmail: Record<string, string> = {};
   const departmentManagerEmail: Partial<Record<Department, string>> = {};
   for (const row of routingRows ?? []) {
-    if (row.match_type === 'job_title') jobTitleManagerEmail[row.match_value] = row.approver_email;
+    if (row.match_type === 'employee') employeeApproverEmail[row.match_value] = row.approver_email;
+    else if (row.match_type === 'job_title') jobTitleManagerEmail[row.match_value] = row.approver_email;
     else departmentManagerEmail[row.match_value as Department] = row.approver_email;
   }
 
   const settings = new Map((settingsRows ?? []).map((r) => [r.key, r.value]));
   return {
+    employeeApproverEmail,
     jobTitleManagerEmail,
     departmentManagerEmail,
     willEmail: settings.get('default_approver_1') ?? '',
