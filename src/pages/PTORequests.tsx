@@ -42,8 +42,8 @@ export function PTORequestsPage() {
 
   // Employees only ever see their own log.
   const scoped = useMemo(
-    () => (isAdmin ? requests : requests.filter((r) => r.employeeId === currentUser.id)),
-    [requests, isAdmin, currentUser.id],
+    () => (isAdmin ? requests : requests.filter((r) => r.employeeId === currentUser?.id)),
+    [requests, isAdmin, currentUser?.id],
   );
 
   const filtered = useMemo(() => {
@@ -272,7 +272,7 @@ export function PTORequestsPage() {
         />
       </div>
 
-        {!isManagement && (
+        {!isManagement && currentUser && (
           <div className="min-h-0 overflow-y-auto">
             <FileLeaveAside employee={currentUser} balance={balances[currentUser.id]} />
           </div>
@@ -281,12 +281,14 @@ export function PTORequestsPage() {
 
       <FileLeaveModal open={fileLeaveOpen} onClose={() => setFileLeaveOpen(false)} />
 
-      <MyBalanceModal
-        open={myBalanceOpen}
-        onClose={() => setMyBalanceOpen(false)}
-        employee={currentUser}
-        balance={balances[currentUser.id]}
-      />
+      {currentUser && (
+        <MyBalanceModal
+          open={myBalanceOpen}
+          onClose={() => setMyBalanceOpen(false)}
+          employee={currentUser}
+          balance={balances[currentUser.id]}
+        />
+      )}
 
       <Drawer
         open={!!selected}

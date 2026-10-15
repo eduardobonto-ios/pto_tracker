@@ -47,13 +47,13 @@ export function RequestDetails({ request }: { request: PTORequest }) {
   // employes knowing if their coworkers leave is paid or unpaid" (Will,
   // 2026-10-06). This drawer is reachable by deep link from the calendar, so
   // it is the one place a colleague could otherwise read it.
-  const canSeePayStatus = isAdmin || currentUser.id === request.employeeId;
+  const canSeePayStatus = isAdmin || currentUser?.id === request.employeeId;
 
   // Only the requester (or an admin acting on their behalf) can cancel, and
   // only while the request is still open — a Rejected or already-Cancelled
   // record is terminal.
   const canCancel =
-    (currentUser.id === request.employeeId || isAdmin) &&
+    (currentUser?.id === request.employeeId || isAdmin) &&
     (request.status === 'Pending' || request.status === 'Approved');
 
   function handleCancel() {

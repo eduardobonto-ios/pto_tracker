@@ -14,7 +14,7 @@ export function Header({
   onOpenNav: () => void;
   actions?: React.ReactNode;
 }) {
-  const { currentUser, signOut, summary, isManagement } = useApp();
+  const { currentAccount, signOut, summary, isManagement } = useApp();
   const navigate = useNavigate();
 
   return (
@@ -58,13 +58,13 @@ export function Header({
         )}
 
         <div className="flex items-center gap-2.5 rounded-xl px-2 py-1.5">
-          <Avatar name={currentUser.name} department={currentUser.department} size="sm" />
+          <Avatar name={currentAccount.fullName} department={currentAccount.department} size="sm" />
           <span className="hidden text-left leading-tight sm:block">
             <span className="block max-w-[150px] truncate text-[13px] font-semibold text-navy-900">
-              {currentUser.name}
+              {currentAccount.fullName}
             </span>
             <span className="block text-[11.5px] text-slateish-500">
-              {currentUser.appRole} · {currentUser.jobTitle}
+              {currentAccount.appRole} · {currentAccount.jobTitle}
             </span>
           </span>
         </div>

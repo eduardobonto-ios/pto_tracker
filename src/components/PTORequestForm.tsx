@@ -48,7 +48,7 @@ export function useLeaveRequestForm({
 
   const blank = useMemo<FormState>(
     () => ({
-      employeeId: currentUser.id,
+      employeeId: currentUser?.id ?? '',
       leaveType: '',
       reason: '',
       startDate: '',
@@ -59,7 +59,7 @@ export function useLeaveRequestForm({
       coverage: '',
       status: 'Pending',
     }),
-    [currentUser.id],
+    [currentUser?.id],
   );
 
   const [form, setForm] = useState<FormState>(blank);
@@ -104,9 +104,12 @@ export function useLeaveRequestForm({
     [form.startDate, form.endDate, form.duration, totalHours],
   );
 
+  // NULL FOR AN APPROVER-ONLY ACCOUNT with nobody chosen yet: they have no
+  // employee record of their own to default to. The form body below renders a
+  // prompt instead of fields until they pick someone.
   const selectedEmployee = employees.find((e) => e.id === form.employeeId) ?? currentUser;
 
-  const selectedBalance = balances[selectedEmployee.id];
+  const selectedBalance = selectedEmployee ? balances[selectedEmployee.id] : undefined;
   const eligible = selectedBalance?.eligible ?? true;
 
   // MEASURED AS OF THE LEAVE'S OWN START DATE, not today. The entitlement
@@ -121,6 +124,7 @@ export function useLeaveRequestForm({
   const daysAvailable = useMemo(() => {
     if (!selectedBalance) return Infinity;
     const at = form.startDate ? parseISODate(form.startDate) : new Date();
+    if (!selectedEmployee) return Infinity;
     return round(
       accruedDays(selectedEmployee, at) - selectedBalance.daysUsed - selectedBalance.pendingDays,
     );
@@ -261,13 +265,20 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
         label="Team member"
         required
         error={errors.employeeId}
-        help={isAdmin ? 'As an admin you may file on behalf of another team member.' : 'Locked to your own account.'}
+        help={
+          !currentUser
+            ? 'Your account approves leave but has no PTO of its own, so choose who this is for.'
+            : isAdmin
+              ? 'As an admin you may file on behalf of another team member.'
+              : 'Locked to your own account.'
+        }
       >
         <Select
           value={form.employeeId}
           disabled={!isAdmin}
           onChange={(e) => set('employeeId', e.target.value)}
         >
+          {!form.employeeId && <option value="">Select a team member…</option>}
           {employees.map((e) => (
             <option key={e.id} value={e.id}>
               {e.name} — {e.department}
@@ -280,7 +291,7 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
         <div className="flex items-start gap-2.5 rounded-xl border border-warning-100 bg-warning-50 p-3.5">
           <Info size={16} className="mt-0.5 shrink-0 text-warning-600" />
           <p className="text-[12.5px] leading-relaxed text-warning-700">
-            {selectedEmployee.name} is not yet eligible for PTO — 6 months of employment are
+            {selectedEmployee?.name} is not yet eligible for PTO — 6 months of employment are
             required. This request can still be filed, but will be charged as{' '}
             <strong className="font-semibold">Unpaid</strong>.
           </p>
@@ -335,7 +346,7 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
       </div>
 
       <DepartmentLeaveNotice
-        employee={selectedEmployee}
+        employee={selectedEmployee ?? undefined}
         startDate={form.startDate}
         endDate={form.endDate}
       />
@@ -350,7 +361,7 @@ export function LeaveRequestFields({ f }: { f: LeaveRequestFormState }) {
           <p className="text-[12.5px] leading-relaxed text-warning-700">
             This request is {formatDays(days)} day(s), which is{' '}
             {formatDays(overdrawnBy)} day(s) more than{' '}
-            {selectedEmployee.id === currentUser.id ? 'you have' : `${selectedEmployee.name} has`}{' '}
+            {selectedEmployee?.id === currentUser?.id ? 'you have' : `${selectedEmployee?.name} has`}{' '}
             {PTO_ACCRUAL_ENABLED ? 'will have earned by then' : 'left'} —{' '}
             {PTO_ACCRUAL_ENABLED ? 'PTO accrues every two weeks across the year, and ' : ''}
             {formatDays(Math.max(daysAvailable, 0))} day(s) are available once other pending
@@ -480,7 +491,7 @@ export function LeaveRequestConfirmations({ f }: { f: LeaveRequestFormState }) {
         }
       >
         <dl className="divide-y divide-slateish-200/70">
-          <DetailRow label="Employee">{selectedEmployee.name}</DetailRow>
+          <DetailRow label="Employee">{selectedEmployee?.name ?? '—'}</DetailRow>
           <DetailRow label="Leave type">{form.leaveType}</DetailRow>
           <DetailRow label="Dates">
             {form.startDate ? formatDateRange(form.startDate, form.endDate) : '—'}

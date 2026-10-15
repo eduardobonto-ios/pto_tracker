@@ -135,7 +135,7 @@ export function PTOCalendarPage() {
             onSelect={setSelected}
             orgEvents={orgEvents}
             onRangeChange={handleRangeChange}
-            canSeePayStatus={(r) => isManagement || r.employeeId === currentUser.id}
+            canSeePayStatus={(r) => isManagement || r.employeeId === currentUser?.id}
           />
         </div>
       </div>

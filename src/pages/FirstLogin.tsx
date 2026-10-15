@@ -5,7 +5,7 @@ import { useApp } from '@/context/AppContext';
 
 /** Forced first-login password change, shown before the app becomes available. */
 export function FirstLoginPage() {
-  const { currentUser, knownTempPassword, changePassword, signOut } = useApp();
+  const { currentAccount, knownTempPassword, changePassword, signOut } = useApp();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-5 py-12">
@@ -17,15 +17,15 @@ export function FirstLoginPage() {
         <div className="rounded-2xl border border-slateish-200/80 bg-white p-6 shadow-card sm:p-7">
           <div className="mb-6 flex items-center gap-3 border-b border-slateish-200/70 pb-5">
             <Avatar
-              name={currentUser.name}
-              department={currentUser.department}
+              name={currentAccount.fullName}
+              department={currentAccount.department}
               size="md"
             />
             <div className="min-w-0">
               <h1 className="truncate text-[17px] font-semibold text-navy-900">
-                Welcome, {currentUser.name.split(' ')[0]}
+                Welcome, {currentAccount.fullName.split(' ')[0]}
               </h1>
-              <p className="truncate text-[12.5px] text-slateish-500">{currentUser.email}</p>
+              <p className="truncate text-[12.5px] text-slateish-500">{currentAccount.email}</p>
             </div>
           </div>
 

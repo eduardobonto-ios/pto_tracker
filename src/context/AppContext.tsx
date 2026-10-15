@@ -135,7 +135,23 @@ export interface RequestEditInput {
 
 interface AppContextValue {
   session: Session;
-  currentUser: Employee;
+  /**
+   * The signed-in account. This is the identity: every account has one, and
+   * it carries the name, role, email and department used for audit trails and
+   * permission checks.
+   */
+  currentAccount: UserAccount;
+  /**
+   * The employee record behind that account, when there is one.
+   *
+   * NULL FOR APPROVER-ONLY ACCOUNTS. Gil Welsford and Jason Welsford approve
+   * leave but are not on a PTO plan and hold no employee record, so anything
+   * that reads a balance, an entitlement or a hire date has to handle this
+   * being absent rather than assume a person.
+   */
+  currentUser: Employee | null;
+  /** True when the signed-in account has no employee record of its own. */
+  isApproverOnly: boolean;
   /** Effective application role — drives navigation and permissions. */
   role: AppRole;
   isAdmin: boolean;
@@ -197,12 +213,33 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 /** Default preview identity: an admin, so the full app is visible up front. */
-const DEFAULT_USER_ID = 'emp-01';
+const DEFAULT_ACCOUNT_ID = 'acct-01';
+
+/**
+ * Stand-in used only while signed out, when the login screen is the only thing
+ * rendering. It keeps the context shape stable without inventing a person —
+ * every field is deliberately empty so anything that leaks it is obvious
+ * rather than quietly attributed to a real employee.
+ */
+const SIGNED_OUT_ACCOUNT: UserAccount = {
+  id: '',
+  email: '',
+  fullName: '',
+  appRole: 'Employee',
+  jobTitle: '',
+  department: 'Other',
+  hireDate: '',
+  annualPtoAllowance: 0,
+  status: 'Active',
+  createdAt: '',
+  mustChangePassword: false,
+  employeeId: undefined,
+};
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session>('signed-out');
   const [knownTempPassword, setKnownTempPassword] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState(DEFAULT_USER_ID);
+  const [currentAccountId, setCurrentAccountId] = useState(DEFAULT_ACCOUNT_ID);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [requests, setRequests] = useState<PTORequest[]>([]);
   const [accounts, setAccounts] = useState<UserAccount[]>([]);
@@ -262,10 +299,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const currentUser = useMemo(
-    () => employees.find((e) => e.id === currentUserId) ?? employees[0],
-    [employees, currentUserId],
+  const currentAccount = useMemo(
+    () => accounts.find((a) => a.id === currentAccountId),
+    [accounts, currentAccountId],
   );
+  // DELIBERATELY NO `?? employees[0]` HERE. It used to fall back to the first
+  // employee on the roster, so an account with no employee record signed in as
+  // whoever happened to sort first — seeing their balance and filing as them.
+  // Absent is the honest answer; the callers handle it.
+  const currentUser = useMemo(
+    () =>
+      currentAccount?.employeeId
+        ? (employees.find((e) => e.id === currentAccount.employeeId) ?? null)
+        : null,
+    [employees, currentAccount],
+  );
+
+  /**
+   * Who an action is recorded as. The ACCOUNT, not the employee — approving is
+   * the main thing an approver-only account does, and it has no employee
+   * record to take a name from.
+   */
+  const actorName = currentAccount?.fullName ?? '';
 
   const balances = useMemo(() => computeBalances(employees, requests), [employees, requests]);
   const summary = useMemo(() => computeSummary(employees, requests), [employees, requests]);
@@ -275,7 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const result = await verifyLoginRpc(email, password);
         if (!result) return 'Incorrect email or password.';
-        setCurrentUserId(result.employeeId);
+        setCurrentAccountId(result.accountId);
         setKnownTempPassword(result.mustChangePassword ? password : null);
         setSession(result.mustChangePassword ? 'must-change-password' : 'signed-in');
         return null;
@@ -294,7 +349,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const changePassword = useCallback(
     async (current: string, next: string): Promise<string | null> => {
-      const account = accounts.find((a) => a.employeeId === currentUserId);
+      const account = accounts.find((a) => a.id === currentAccountId);
       if (!account) return 'No account found for this session.';
       try {
         const ok = await changePasswordRpc(account.id, current, next);
@@ -310,7 +365,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return 'Something went wrong updating your password. Please try again.';
       }
     },
-    [accounts, currentUserId],
+    [accounts, currentAccountId],
   );
 
   const submitRequest = useCallback(
@@ -370,54 +425,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const approveRequest = useCallback(
     (id: string, comment?: string) => {
       void (async () => {
-        const updated = await approveRequestRpc(id, currentUser.name, comment);
+        const updated = await approveRequestRpc(id, actorName, comment);
         if (!updated) return;
         setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         const notification = sendNotification(
-          buildReviewedNotification(updated, employees, currentUser.name),
+          buildReviewedNotification(updated, employees, actorName),
         );
         setNotifications((prev) => [notification, ...prev]);
         logNotification(notification);
         syncApprovedLeaveToCalendar(updated);
       })().catch((err) => console.error('[PTO Tracker] failed to approve request:', err));
     },
-    [currentUser?.name, employees],
+    [actorName, employees],
   );
 
   const rejectRequest = useCallback(
     (id: string, rejectionReason: string) => {
       void (async () => {
-        const updated = await rejectRequestRpc(id, currentUser.name, rejectionReason);
+        const updated = await rejectRequestRpc(id, actorName, rejectionReason);
         if (!updated) return;
         setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         const notification = sendNotification(
-          buildReviewedNotification(updated, employees, currentUser.name),
+          buildReviewedNotification(updated, employees, actorName),
         );
         setNotifications((prev) => [notification, ...prev]);
         logNotification(notification);
       })().catch((err) => console.error('[PTO Tracker] failed to reject request:', err));
     },
-    [currentUser?.name, employees],
+    [actorName, employees],
   );
 
   const cancelRequest = useCallback(
     (id: string, reason?: string) => {
       void (async () => {
-        const updated = await cancelRequestRpc(id, currentUser.name, reason);
+        const updated = await cancelRequestRpc(id, actorName, reason);
         if (!updated) return;
         setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
         // No-op on the calendar side if this request was never approved (never had an event).
         removeLeaveFromCalendar(updated);
         if (routing) {
           const notification = sendNotification(
-            buildCancelledNotification(updated, employees, routing, currentUser.name, reason),
+            buildCancelledNotification(updated, employees, routing, actorName, reason),
           );
           setNotifications((prev) => [notification, ...prev]);
           logNotification(notification);
         }
       })().catch((err) => console.error('[PTO Tracker] failed to cancel request:', err));
     },
-    [currentUser?.name, employees, routing],
+    [actorName, employees, routing],
   );
 
   const updateEmployee = useCallback(
@@ -490,7 +545,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const updated = await updateRequestRpc({
           requestId: id,
-          actorName: currentUser.name,
+          actorName: actorName,
           ...input,
         });
         if (!updated) return 'That request no longer exists.';
@@ -506,7 +561,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return err instanceof Error ? err.message : 'Could not save those changes.';
       }
     },
-    [currentUser?.name],
+    [actorName],
   );
 
   const createAccount = useCallback(
@@ -652,7 +707,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   if (loading) {
     return <FullScreenNotice title="Loading Valveman PTO Tracker…" />;
   }
-  if (loadError || !currentUser || !routing) {
+  if (loadError || !routing || (session !== 'signed-out' && !currentAccount)) {
     return (
       <FullScreenNotice
         title="Couldn't load the PTO Tracker"
@@ -664,13 +719,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  const isAdmin = currentUser.appRole === 'Admin';
-  const isManagement = isAdmin || currentUser.email.toLowerCase() === routing.princesEmail.toLowerCase();
+  // Signed out, the login screen is all that renders; a placeholder keeps the
+  // context shape stable without pretending to be a real person.
+  const account = currentAccount ?? SIGNED_OUT_ACCOUNT;
+  const isAdmin = account.appRole === 'Admin';
+  const isManagement =
+    isAdmin || account.email.toLowerCase() === routing.princesEmail.toLowerCase();
 
   const value: AppContextValue = {
     session,
+    currentAccount: account,
     currentUser,
-    role: currentUser.appRole,
+    isApproverOnly: !!currentAccount && !currentUser,
+    role: account.appRole,
     isAdmin,
     isManagement,
     employees,

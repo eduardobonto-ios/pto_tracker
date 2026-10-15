@@ -28,10 +28,10 @@ export function DashboardPage() {
   const { currentUser, isAdmin, employees, requests, balances, summary } = useApp();
   const navigate = useNavigate();
 
-  const myBalance = balances[currentUser.id];
+  const myBalance = currentUser ? balances[currentUser.id] : undefined;
   const myRequests = useMemo(
-    () => requests.filter((r) => r.employeeId === currentUser.id),
-    [requests, currentUser.id],
+    () => (currentUser ? requests.filter((r) => r.employeeId === currentUser.id) : []),
+    [requests, currentUser],
   );
 
   const scope = isAdmin ? requests : myRequests;
@@ -51,7 +51,7 @@ export function DashboardPage() {
       subtitle={
         isAdmin
           ? 'Company-wide PTO monitoring for 2026'
-          : `Your PTO at a glance · ${currentUser.department}`
+          : `Your PTO at a glance · ${currentUser?.department ?? ''}`
       }
       actions={
         <Button size="sm" onClick={() => navigate('/file-a-leave')} className="hidden sm:inline-flex">
@@ -101,7 +101,7 @@ export function DashboardPage() {
         <div className="grid gap-6 xl:grid-cols-3">
           {/* Personal balance — emphasised for employees */}
           <div className={isAdmin ? 'xl:col-span-1' : 'xl:col-span-2'}>
-            {myBalance && <PTOBalanceCard employee={currentUser} balance={myBalance} />}
+            {currentUser && myBalance && <PTOBalanceCard employee={currentUser} balance={myBalance} />}
           </div>
 
           {/* Pending review queue */}
