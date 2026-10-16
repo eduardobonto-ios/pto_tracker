@@ -7,6 +7,7 @@ import { Field, Textarea } from '@/components/ui/Field';
 import { consumeActionToken, logNotification, resolveActionToken, type TokenResolution } from '@/lib/supabaseActions';
 import { buildReviewedNotificationFromToken, sendNotification } from '@/lib/notifications';
 import { formatDateRange, formatDays } from '@/lib/utils';
+import { syncLeaveToCalendarById } from '@/lib/calendarSync';
 
 /**
  * Public, unauthenticated page a manager lands on after clicking Approve or
@@ -66,6 +67,19 @@ export function EmailActionPage() {
           ),
         );
         logNotification(notification);
+
+        // KEEP THE MICROSOFT CALENDAR IN STEP. The in-app approve has always
+        // done this; this path never did, so leave approved from an email
+        // reached the tracker but not the calendar, with nothing to retry it.
+        // Delete on a decline is deliberate and harmless: it clears the event
+        // if the request had been approved earlier, and does nothing if there
+        // was never one.
+        if (outcome.requestId) {
+          syncLeaveToCalendarById(
+            outcome.requestId,
+            outcome.status === 'Approved' ? 'upsert' : 'delete',
+          );
+        }
       }
     } catch {
       setError('Something went wrong submitting your response. Please try again.');

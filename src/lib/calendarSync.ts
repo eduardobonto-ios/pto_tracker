@@ -45,3 +45,17 @@ export function syncApprovedLeaveToCalendar(request: PTORequest): void {
 export function removeLeaveFromCalendar(request: PTORequest): void {
   void invokeSync(request.id, 'delete');
 }
+
+/**
+ * Same as the two above, but by request id alone.
+ *
+ * The email approve/decline links never hold a full PTORequest — the token
+ * resolution returns a flat summary — and because of that the calendar was
+ * only ever updated when someone approved inside the app. Approving from the
+ * email left the tracker correct and the Microsoft calendar silently short of
+ * that leave, with nothing to retry it. Reported by Will Berget 2026-10-17
+ * for two requests approved that way.
+ */
+export function syncLeaveToCalendarById(requestId: string, action: 'upsert' | 'delete'): void {
+  void invokeSync(requestId, action);
+}
