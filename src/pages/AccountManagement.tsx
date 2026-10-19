@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AtSign, KeyRound, Lock, Search, Trash2, UserMinus, UserPlus2 } from 'lucide-react';
+import { KeyRound, Lock, Pencil, Search, Trash2, UserMinus, UserPlus2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AccountCreationModal } from '@/components/AccountCreationModal';
 import { Card, CardBody } from '@/components/ui/Card';
@@ -11,10 +11,10 @@ import { Avatar } from '@/components/ui/Misc';
 import { AccountStatusBadge, RoleBadge } from '@/components/StatusBadge';
 import { useApp } from '@/context/AppContext';
 import { formatDate, generateTempPassword } from '@/lib/utils';
-import type { UserAccount } from '@/types';
+import { DEPARTMENTS, type AppRole, type Department, type UserAccount } from '@/types';
 
 export function AccountManagementPage() {
-  const { accounts, resetPassword, revokeAccess, restoreAccess, deleteAccount, updateAccountEmail } =
+  const { accounts, resetPassword, revokeAccess, restoreAccess, deleteAccount, updateAccountDetails } =
     useApp();
 
   const [query, setQuery] = useState('');
@@ -24,35 +24,49 @@ export function AccountManagementPage() {
   const [newTempPassword, setNewTempPassword] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<UserAccount | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [emailTarget, setEmailTarget] = useState<UserAccount | null>(null);
-  const [emailDraft, setEmailDraft] = useState('');
-  const [emailError, setEmailError] = useState('');
-  const [emailNotice, setEmailNotice] = useState('');
-  const [emailSaving, setEmailSaving] = useState(false);
+  const [editTarget, setEditTarget] = useState<UserAccount | null>(null);
+  const [draft, setDraft] = useState({
+    email: '',
+    fullName: '',
+    appRole: 'Employee' as AppRole,
+    jobTitle: '',
+    department: 'Other' as Department,
+  });
+  const [editError, setEditError] = useState('');
+  const [editNotice, setEditNotice] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
-  function openEmail(a: UserAccount) {
-    setEmailTarget(a);
-    setEmailDraft(a.email);
-    setEmailError('');
-    setEmailNotice('');
+  function openEdit(a: UserAccount) {
+    setEditTarget(a);
+    setDraft({
+      email: a.email,
+      fullName: a.fullName,
+      appRole: a.appRole,
+      jobTitle: a.jobTitle,
+      department: a.department,
+    });
+    setEditError('');
+    setEditNotice('');
   }
 
-  async function saveEmail() {
-    if (!emailTarget) return;
-    setEmailSaving(true);
-    setEmailError('');
+  async function saveEdit() {
+    if (!editTarget) return;
+    setEditSaving(true);
+    setEditError('');
     try {
-      const notice = await updateAccountEmail(emailTarget.id, emailDraft);
-      setEmailNotice(notice);
-      setEmailTarget(null);
+      const notice = await updateAccountDetails({ accountId: editTarget.id, ...draft });
+      setEditTarget(null);
+      // Only worth a dialog when the change had knock-on effects.
+      if (notice.trim()) setEditNotice(notice);
     } catch (err) {
-      // The function raises a readable message for a bad address or a
-      // duplicate; show it rather than a generic failure.
-      setEmailError(err instanceof Error ? err.message : 'Could not change the email.');
+      // The function raises readable messages for a bad address, a duplicate,
+      // or removing the last administrator — show those rather than a generic one.
+      setEditError(err instanceof Error ? err.message : 'Could not save those details.');
     } finally {
-      setEmailSaving(false);
+      setEditSaving(false);
     }
   }
+
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -185,12 +199,12 @@ export function AccountManagementPage() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => openEmail(a)}
-                        aria-label="Change email"
-                        title="Change email"
+                        onClick={() => openEdit(a)}
+                        aria-label="Edit details"
+                        title="Edit details"
                         className="w-8 px-0"
                       >
-                        <AtSign size={14} className="text-accent-500" />
+                        <Pencil size={14} className="text-accent-500" />
                       </Button>
                       <Button
                         size="sm"
@@ -247,52 +261,97 @@ export function AccountManagementPage() {
 
       <AccountCreationModal open={createOpen} onClose={() => setCreateOpen(false)} />
 
-      {/* Change email */}
+      {/* Edit details */}
       <Modal
-        open={!!emailTarget}
-        onClose={() => setEmailTarget(null)}
-        title="Change email"
-        description={`Sign-in address for ${emailTarget?.fullName ?? ''}`}
-        icon={<AtSign size={18} />}
-        size="sm"
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        title="Edit details"
+        description={editTarget?.fullName ?? ''}
+        icon={<Pencil size={18} />}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setEmailTarget(null)} disabled={emailSaving}>
+            <Button variant="secondary" onClick={() => setEditTarget(null)} disabled={editSaving}>
               Cancel
             </Button>
-            <Button onClick={saveEmail} disabled={emailSaving || !emailDraft.trim()}>
-              {emailSaving ? 'Saving…' : 'Save email'}
+            <Button
+              onClick={saveEdit}
+              disabled={editSaving || !draft.email.trim() || !draft.fullName.trim()}
+            >
+              {editSaving ? 'Saving…' : 'Save changes'}
             </Button>
           </>
         }
       >
-        <div className="space-y-3">
-          <p className="text-[12.5px] leading-relaxed text-slateish-600">
-            This is what they sign in with, and where their notifications go. Changing it updates
-            both, and moves any approval routing with them.
-          </p>
-          <Field label="Email" error={emailError}>
+        <div className="space-y-4">
+          <Field label="Full name" required>
             <Input
-              type="email"
-              value={emailDraft}
-              onChange={(e) => setEmailDraft(e.target.value)}
-              placeholder="name@valveman.com"
+              value={draft.fullName}
+              onChange={(e) => setDraft((d) => ({ ...d, fullName: e.target.value }))}
               autoFocus
             />
           </Field>
+          <Field
+            label="Email"
+            required
+            help="What they sign in with, and where their notifications go."
+          >
+            <Input
+              type="email"
+              value={draft.email}
+              onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+              placeholder="name@valveman.com"
+            />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Application role" help="Admins can review requests and manage accounts.">
+              <Select
+                value={draft.appRole}
+                onChange={(e) => setDraft((d) => ({ ...d, appRole: e.target.value as AppRole }))}
+              >
+                <option value="Employee">Employee</option>
+                <option value="Admin">Admin</option>
+              </Select>
+            </Field>
+            <Field label="Department" help="Can change who approves their leave.">
+              <Select
+                value={draft.department}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, department: e.target.value as Department }))
+                }
+              >
+                {DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <Field label="Job title" help="Territory Manager is a plan rule, not just a label.">
+            <Input
+              value={draft.jobTitle}
+              onChange={(e) => setDraft((d) => ({ ...d, jobTitle: e.target.value }))}
+              placeholder="e.g. Territory Manager"
+            />
+          </Field>
+          {editError && (
+            <p className="rounded-lg bg-danger-50 px-3 py-2 text-[12.5px] text-danger-700">
+              {editError}
+            </p>
+          )}
         </div>
       </Modal>
 
-      {/* Result of a change, shown after the dialog closes */}
+      {/* Knock-on effects of a change, shown after the dialog closes */}
       <Modal
-        open={!!emailNotice}
-        onClose={() => setEmailNotice('')}
-        title="Email changed"
-        icon={<AtSign size={18} />}
+        open={!!editNotice}
+        onClose={() => setEditNotice('')}
+        title="Details saved"
+        icon={<Pencil size={18} />}
         size="sm"
-        footer={<Button onClick={() => setEmailNotice('')}>Close</Button>}
+        footer={<Button onClick={() => setEditNotice('')}>Close</Button>}
       >
-        <p className="text-[12.5px] leading-relaxed text-slateish-600">{emailNotice}</p>
+        <p className="text-[12.5px] leading-relaxed text-slateish-600">{editNotice}</p>
       </Modal>
 
       {/* Reset password */}

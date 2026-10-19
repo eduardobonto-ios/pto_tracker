@@ -27,7 +27,7 @@ import {
 } from '@/lib/supabaseMappers';
 import {
   approveRequestRpc,
-  updateAccountEmailRpc,
+  updateAccountDetailsRpc,
   cancelRequestRpc,
   changePasswordRpc,
   logNotification,
@@ -44,6 +44,7 @@ import type {
   Employee,
   PTORequest,
   UserAccount,
+  Department,
 } from '@/types';
 
 /**
@@ -206,7 +207,14 @@ interface AppContextValue {
   updateEmployee: (employeeId: string, input: EmployeeEditInput) => Promise<string | null>;
   /** Admin-initiated reset — sets the real password directly, no current-password check. */
   resetPassword: (accountId: string, newPassword: string) => void;
-  updateAccountEmail: (accountId: string, newEmail: string) => Promise<string>;
+  updateAccountDetails: (input: {
+    accountId: string;
+    email: string;
+    fullName: string;
+    appRole: AppRole;
+    jobTitle: string;
+    department: Department;
+  }) => Promise<string>;
   revokeAccess: (accountId: string) => void;
   restoreAccess: (accountId: string) => void;
   deleteAccount: (accountId: string) => void;
@@ -659,18 +667,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Change an account's email. The employee row and any approver-routing rules
-   * move with it server-side; this just reflects the result locally.
+   * Edit an account. The employee row and any approver-routing rules move with
+   * it server-side; this reflects the result locally and returns the notice.
    */
-  const updateAccountEmail = useCallback(
-    async (accountId: string, newEmail: string): Promise<string> => {
-      const { email, notice } = await updateAccountEmailRpc(accountId, newEmail);
-      setAccounts((prev) => prev.map((a) => (a.id === accountId ? { ...a, email } : a)));
-      setEmployees((prev) =>
-        prev.map((e) =>
-          e.id === accounts.find((a) => a.id === accountId)?.employeeId ? { ...e, email } : e,
+  const updateAccountDetails = useCallback(
+    async (input: {
+      accountId: string;
+      email: string;
+      fullName: string;
+      appRole: AppRole;
+      jobTitle: string;
+      department: Department;
+    }): Promise<string> => {
+      const { email, notice } = await updateAccountDetailsRpc(input);
+      const employeeId = accounts.find((a) => a.id === input.accountId)?.employeeId;
+      setAccounts((prev) =>
+        prev.map((a) =>
+          a.id === input.accountId
+            ? { ...a, email, fullName: input.fullName, appRole: input.appRole,
+                jobTitle: input.jobTitle, department: input.department }
+            : a,
         ),
       );
+      if (employeeId) {
+        setEmployees((prev) =>
+          prev.map((e) =>
+            e.id === employeeId
+              ? { ...e, email, name: input.fullName, appRole: input.appRole,
+                  jobTitle: input.jobTitle, department: input.department }
+              : e,
+          ),
+        );
+      }
       return notice;
     },
     [accounts],
@@ -774,7 +802,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateEmployee,
     updateRequest,
     resetPassword,
-    updateAccountEmail,
+    updateAccountDetails,
     revokeAccess,
     restoreAccess,
     deleteAccount,

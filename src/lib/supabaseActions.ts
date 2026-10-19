@@ -7,7 +7,7 @@
 import { supabase } from './supabaseClient';
 import { mapRequestRow } from './supabaseMappers';
 import type { NotificationPayload } from './notifications';
-import type { PTORequest } from '@/types';
+import type { PTORequest, AppRole, Department } from '@/types';
 
 export interface SubmitRequestInput {
   employeeId: string;
@@ -136,17 +136,28 @@ function mapTokenRow(row: Record<string, unknown>): TokenResolution {
 }
 
 /**
- * Change an account's email. Moves the login, the notification target and any
- * approver-routing rules together — see pto_update_account_email. Throws with
- * a readable message on a bad address or one already in use.
+ * Edit an account: email, name, application role, job title and department.
+ *
+ * All five move together server-side, along with the employee row and any
+ * approver-routing rules — see pto_update_account_details. Returns a notice
+ * describing anything else the change affected. Throws a readable message on
+ * a bad address, a duplicate, or removing the last administrator.
  */
-export async function updateAccountEmailRpc(
-  accountId: string,
-  newEmail: string,
-): Promise<{ email: string; notice: string }> {
-  const { data, error } = await supabase.rpc('pto_update_account_email', {
-    p_account_id: accountId,
-    p_new_email: newEmail,
+export async function updateAccountDetailsRpc(input: {
+  accountId: string;
+  email: string;
+  fullName: string;
+  appRole: AppRole;
+  jobTitle: string;
+  department: Department;
+}): Promise<{ email: string; notice: string }> {
+  const { data, error } = await supabase.rpc('pto_update_account_details', {
+    p_account_id: input.accountId,
+    p_email: input.email,
+    p_full_name: input.fullName,
+    p_app_role: input.appRole,
+    p_job_title: input.jobTitle,
+    p_department: input.department,
   });
   if (error) throw new Error(error.message);
   const row = data?.[0];
