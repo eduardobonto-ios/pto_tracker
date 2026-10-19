@@ -11,3 +11,6 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .vercel
+
+# Generated temporary passwords — plaintext credentials, never commit.
+infra/.temp-passwords*.csv

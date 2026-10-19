@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { KeyRound, Lock, Search, Trash2, UserMinus, UserPlus2 } from 'lucide-react';
+import { AtSign, KeyRound, Lock, Search, Trash2, UserMinus, UserPlus2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AccountCreationModal } from '@/components/AccountCreationModal';
 import { Card, CardBody } from '@/components/ui/Card';
@@ -14,7 +14,8 @@ import { formatDate, generateTempPassword } from '@/lib/utils';
 import type { UserAccount } from '@/types';
 
 export function AccountManagementPage() {
-  const { accounts, resetPassword, revokeAccess, restoreAccess, deleteAccount } = useApp();
+  const { accounts, resetPassword, revokeAccess, restoreAccess, deleteAccount, updateAccountEmail } =
+    useApp();
 
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -23,6 +24,35 @@ export function AccountManagementPage() {
   const [newTempPassword, setNewTempPassword] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<UserAccount | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [emailTarget, setEmailTarget] = useState<UserAccount | null>(null);
+  const [emailDraft, setEmailDraft] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [emailNotice, setEmailNotice] = useState('');
+  const [emailSaving, setEmailSaving] = useState(false);
+
+  function openEmail(a: UserAccount) {
+    setEmailTarget(a);
+    setEmailDraft(a.email);
+    setEmailError('');
+    setEmailNotice('');
+  }
+
+  async function saveEmail() {
+    if (!emailTarget) return;
+    setEmailSaving(true);
+    setEmailError('');
+    try {
+      const notice = await updateAccountEmail(emailTarget.id, emailDraft);
+      setEmailNotice(notice);
+      setEmailTarget(null);
+    } catch (err) {
+      // The function raises a readable message for a bad address or a
+      // duplicate; show it rather than a generic failure.
+      setEmailError(err instanceof Error ? err.message : 'Could not change the email.');
+    } finally {
+      setEmailSaving(false);
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -155,6 +185,16 @@ export function AccountManagementPage() {
                       <Button
                         size="sm"
                         variant="secondary"
+                        onClick={() => openEmail(a)}
+                        aria-label="Change email"
+                        title="Change email"
+                        className="w-8 px-0"
+                      >
+                        <AtSign size={14} className="text-accent-500" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
                         onClick={() => openReset(a)}
                         aria-label="Reset password"
                         title="Reset password"
@@ -206,6 +246,54 @@ export function AccountManagementPage() {
       </div>
 
       <AccountCreationModal open={createOpen} onClose={() => setCreateOpen(false)} />
+
+      {/* Change email */}
+      <Modal
+        open={!!emailTarget}
+        onClose={() => setEmailTarget(null)}
+        title="Change email"
+        description={`Sign-in address for ${emailTarget?.fullName ?? ''}`}
+        icon={<AtSign size={18} />}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEmailTarget(null)} disabled={emailSaving}>
+              Cancel
+            </Button>
+            <Button onClick={saveEmail} disabled={emailSaving || !emailDraft.trim()}>
+              {emailSaving ? 'Saving…' : 'Save email'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-[12.5px] leading-relaxed text-slateish-600">
+            This is what they sign in with, and where their notifications go. Changing it updates
+            both, and moves any approval routing with them.
+          </p>
+          <Field label="Email" error={emailError}>
+            <Input
+              type="email"
+              value={emailDraft}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              placeholder="name@valveman.com"
+              autoFocus
+            />
+          </Field>
+        </div>
+      </Modal>
+
+      {/* Result of a change, shown after the dialog closes */}
+      <Modal
+        open={!!emailNotice}
+        onClose={() => setEmailNotice('')}
+        title="Email changed"
+        icon={<AtSign size={18} />}
+        size="sm"
+        footer={<Button onClick={() => setEmailNotice('')}>Close</Button>}
+      >
+        <p className="text-[12.5px] leading-relaxed text-slateish-600">{emailNotice}</p>
+      </Modal>
 
       {/* Reset password */}
       <Modal

@@ -135,6 +135,25 @@ function mapTokenRow(row: Record<string, unknown>): TokenResolution {
   };
 }
 
+/**
+ * Change an account's email. Moves the login, the notification target and any
+ * approver-routing rules together — see pto_update_account_email. Throws with
+ * a readable message on a bad address or one already in use.
+ */
+export async function updateAccountEmailRpc(
+  accountId: string,
+  newEmail: string,
+): Promise<{ email: string; notice: string }> {
+  const { data, error } = await supabase.rpc('pto_update_account_email', {
+    p_account_id: accountId,
+    p_new_email: newEmail,
+  });
+  if (error) throw new Error(error.message);
+  const row = data?.[0];
+  if (!row) throw new Error('No response from the server.');
+  return { email: row.email as string, notice: row.notice as string };
+}
+
 /** Read-only — safe to call as soon as the /respond page loads, before the visitor confirms anything. */
 export async function resolveActionToken(token: string): Promise<TokenResolution> {
   const { data, error } = await supabase.rpc('pto_resolve_action_token', { p_token: token });
